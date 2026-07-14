@@ -349,7 +349,7 @@ if st.session_state['rol'] == 'Administrador':
         st.header("GESTIÓN DE SOCIOS")
         tab1, tab2, tab3 = st.tabs(["LISTADO Y EXPORTACIÓN", "NUEVO SOCIO", "EDITAR / ELIMINAR"])
         with tab1:
-            query_reporte = '''SELECT s.cedula as CEDULA, s.nombres as NOMBRES, s.apellidos as APELLIDOS, COALESCE((SELECT SUM(monto) FROM transacciones WHERE socio_id = s.id AND tipo = 'DEPOSITO'), 0) - COALESCE((SELECT SUM(monto) FROM transacciones WHERE socio_id = s.id AND tipo = 'RETIRO'), 0) AS "SALDO CUENTA", CASE WHEN (SELECT COUNT(*) FROM prestamos WHERE socio_id = s.id AND estado = 'VIGENTE') > 0 THEN 'SI' ELSE 'NO' END AS "TIENE CREDITO" FROM socios s'''
+            query_reporte = '''SELECT s.cedula as "CEDULA", s.nombres as "NOMBRES", s.apellidos as "APELLIDOS", COALESCE((SELECT SUM(monto) FROM transacciones WHERE socio_id = s.id AND tipo = 'DEPOSITO'), 0) - COALESCE((SELECT SUM(monto) FROM transacciones WHERE socio_id = s.id AND tipo = 'RETIRO'), 0) AS "SALDO CUENTA", CASE WHEN (SELECT COUNT(*) FROM prestamos WHERE socio_id = s.id AND estado = 'VIGENTE') > 0 THEN 'SI' ELSE 'NO' END AS "TIENE CREDITO" FROM socios s'''
             df_reporte = get_dataframe(query_reporte)
             st.dataframe(df_reporte, use_container_width=True)
             col_pdf, col_excel = st.columns(2)
@@ -397,8 +397,8 @@ if st.session_state['rol'] == 'Administrador':
                     c_ced = clean_text(ced)
                     if c_ced:
                         try:
-                            nuevo_id = run_query("INSERT INTO socios (cedula, nombres, apellidos, telefono, correo, fecha_registro) VALUES (?,?,?,?,?,?)", (c_ced, clean_text(nom), clean_text(ape), clean_text(tel), clean_text(correo), hoy_str))
-                            run_query("INSERT INTO usuarios (username, password, rol, socio_id) VALUES (?, ?, 'SOCIO', ?)", (c_ced, c_ced, nuevo_id))
+                            nuevo_id = run_query("INSERT INTO socios (cedula, nombres, apellidos, telefono, correo, fecha_registro) VALUES (%s,%s,%s,%s,%s,%s)", (c_ced, clean_text(nom), clean_text(ape), clean_text(tel), clean_text(correo), hoy_str))
+                            run_query("INSERT INTO usuarios (username, password, rol, socio_id) VALUES (%s, %s, 'SOCIO', %s)", (c_ced, c_ced, nuevo_id))
                             registrar_bitacora("NUEVO SOCIO", f"Registrado Socio: {clean_text(nom)} {clean_text(ape)} (CI: {c_ced})")
                             st.success("SOCIO REGISTRADO CON ÉXITO.")
                         except Exception: st.error("LA CÉDULA YA ESTÁ REGISTRADA O HUBO UN ERROR.")
@@ -409,18 +409,18 @@ if st.session_state['rol'] == 'Administrador':
             if not lista_socios.empty:
                 socio_sel = st.selectbox("SELECCIONE UN SOCIO", lista_socios['id'].astype(str) + " - " + lista_socios['nombres'] + " " + lista_socios['apellidos'])
                 id_sel = socio_sel.split(" - ")[0]; nom_sel = socio_sel.split(" - ")[1]
-                datos_actuales = fetch_data("SELECT cedula, nombres, apellidos, telefono, correo FROM socios WHERE id=?", (id_sel,))[0]
+                datos_actuales = fetch_data("SELECT cedula, nombres, apellidos, telefono, correo FROM socios WHERE id=%s", (id_sel,))[0]
                 with st.form("form_editar_socio"):
                     col_ed1, col_ed2 = st.columns(2)
                     with col_ed1: e_ced = st.text_input("CÉDULA", value=datos_actuales[0]); e_nom = st.text_input("NOMBRES", value=datos_actuales[1]); e_ape = st.text_input("APELLIDOS", value=datos_actuales[2])
                     with col_ed2: e_tel = st.text_input("TELÉFONO", value=datos_actuales[3]); e_correo = st.text_input("CORREO", value=datos_actuales[4]); st.write("<br><br>", unsafe_allow_html=True); btn_editar = st.form_submit_button("GUARDAR CAMBIOS")
                     if btn_editar:
-                        run_query("UPDATE socios SET cedula=?, nombres=?, apellidos=?, telefono=?, correo=? WHERE id=?", (clean_text(e_ced), clean_text(e_nom), clean_text(e_ape), clean_text(e_tel), clean_text(e_correo), id_sel))
+                        run_query("UPDATE socios SET cedula=%s, nombres=%s, apellidos=%s, telefono=%s, correo=%s WHERE id=%s", (clean_text(e_ced), clean_text(e_nom), clean_text(e_ape), clean_text(e_tel), clean_text(e_correo), id_sel))
                         registrar_bitacora("EDITAR SOCIO", f"Actualizados datos del Socio ID: {id_sel}")
                         st.success("DATOS ACTUALIZADOS."); st.rerun()
                 st.divider()
                 if st.button("ELIMINAR SOCIO DEFINITIVAMENTE", type="primary"):
-                    run_query("DELETE FROM usuarios WHERE socio_id = ?", (id_sel,)); run_query("DELETE FROM socios WHERE id = ?", (id_sel,))
+                    run_query("DELETE FROM usuarios WHERE socio_id = %s", (id_sel,)); run_query("DELETE FROM socios WHERE id = %s", (id_sel,))
                     registrar_bitacora("ELIMINAR SOCIO", f"Socio eliminado: {nom_sel} (ID: {id_sel})")
                     st.success("SOCIO ELIMINADO."); st.rerun()
 
@@ -434,7 +434,7 @@ if st.session_state['rol'] == 'Administrador':
                 with col_tx2: monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0); st.write(""); submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
                 if submit_tx:
                     s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
-                    tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (?,?,?,?)", (s_id, clean_text(tipo), monto, hoy_str))
+                    tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
                     registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
                     pdf_bytes = generar_comprobante("COMPROBANTE DE TRANSACCION", f"TX-{tx_id}", nombre_socio, {"TIPO DE MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
                     st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
@@ -445,22 +445,22 @@ if st.session_state['rol'] == 'Administrador':
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
         tab_solicitudes, tab_otorgar, tab_cobrar = st.tabs(["REVISAR SOLICITUDES", "OTORGAR CRÉDITO DIRECTO", "COBRAR CUOTAS"])
         with tab_solicitudes:
-            solicitudes = get_dataframe("SELECT p.id, s.nombres, s.apellidos, p.capital_original, p.tipo_credito FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = 'SOLICITADO'")
+            solicitudes = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.capital_original as "CAPITAL_ORIGINAL", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'SOLICITADO\'')
             if not solicitudes.empty:
                 for _, row in solicitudes.iterrows():
-                    st.info(f"**SOLICITUD PENDIENTE:** {row['nombres']} {row['apellidos']} solicita **${row['capital_original']}** bajo la modalidad **{row['tipo_credito']}**.")
+                    st.info(f"**SOLICITUD PENDIENTE:** {row['nombres']} {row['apellidos']} solicita **${row['CAPITAL_ORIGINAL']}** bajo la modalidad **{row['TIPO_CREDITO']}**.")
                     col1, col2, col3 = st.columns([2, 1, 1])
                     with col1: f_otorga = st.date_input(f"FECHA DE OTORGAMIENTO (ID:{row['id']})", value=hoy_dt.date())
                     with col2: 
                         st.write("<br>", unsafe_allow_html=True)
                         if st.button("✅ APROBAR", key=f"apr_{row['id']}", use_container_width=True):
-                            run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=? WHERE id=?", (format_date(f_otorga), row['id']))
-                            registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row['id']} por ${row['capital_original']} a {row['nombres']} {row['apellidos']}")
+                            run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=%s WHERE id=%s", (format_date(f_otorga), row['id']))
+                            registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row['id']} por ${row['CAPITAL_ORIGINAL']} a {row['nombres']} {row['apellidos']}")
                             st.rerun()
                     with col3:
                         st.write("<br>", unsafe_allow_html=True)
                         if st.button("❌ RECHAZAR", key=f"rec_{row['id']}", use_container_width=True):
-                            run_query("UPDATE prestamos SET estado='RECHAZADO' WHERE id=?", (row['id'],)); st.rerun()
+                            run_query("UPDATE prestamos SET estado='RECHAZADO' WHERE id=%s", (row['id'],)); st.rerun()
                     st.write("---")
             else: st.info("No hay solicitudes pendientes en la bandeja de entrada.")
 
@@ -474,11 +474,11 @@ if st.session_state['rol'] == 'Administrador':
                     st.write(""); 
                     if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE"):
                         s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
-                        run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (?,?,?,?,?,?,?)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
+                        run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
                         registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}"); st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
         
         with tab_cobrar:
-            prestamos_vig = get_dataframe("SELECT p.id, s.nombres, s.apellidos, p.saldo_capital, p.capital_original, p.fecha_otorgamiento, p.tipo_credito FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = 'VIGENTE'")
+            prestamos_vig = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
             if not prestamos_vig.empty:
                 p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'])
                 p_id = int(p_sel_str.split(" - ")[0]); nombre_socio = p_sel_str.split(" - ")[1]
@@ -486,21 +486,21 @@ if st.session_state['rol'] == 'Administrador':
                 
                 col_f1, col_f2 = st.columns([1, 2])
                 with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
-                interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['capital_original'], p_data['tipo_credito'], p_data['fecha_otorgamiento'], fecha_cobro)
-                with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['fecha_otorgamiento']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
-                st.warning(f"💰 **SALDO CAPITAL:** ${p_data['saldo_capital']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
+                interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], fecha_cobro)
+                with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
+                st.warning(f"💰 **SALDO CAPITAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
                 
                 with st.form("form_pago"):
                     col_p1, col_p2 = st.columns(2)
-                    with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['saldo_capital']), step=10.0, value=float(p_data['saldo_capital']))
+                    with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
                     with col_p2: pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
                     st.write("")
                     if st.form_submit_button("CONFIRMAR RECEPCIÓN DE PAGO"):
-                        run_query("UPDATE prestamos SET saldo_capital = saldo_capital - ? WHERE id = ?", (pago_cap, p_id))
-                        pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (?,?,?,?)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                        run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
+                        pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
                         registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
-                        nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = ?", (p_id,), returning=True)
-                        if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = ?", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
+                        nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                        if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
                         else: st.success("PAGO APLICADO CORRECTAMENTE.")
                         pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
                         st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
@@ -514,14 +514,14 @@ if st.session_state['rol'] == 'Administrador':
             with col_fl2: categoria = st.selectbox("CLASIFICACIÓN", ["DONACION", "GASTO ADMINISTRATIVO", "MANTENIMIENTO", "OTRO"]); desc = st.text_input("CONCEPTO / DESCRIPCIÓN")
             st.write(""); 
             if st.form_submit_button("REGISTRAR ASIENTO CONTABLE"):
-                run_query("INSERT INTO flujo_extra (tipo, categoria, monto, descripcion, fecha) VALUES (?,?,?,?,?)", (clean_text(tipo_flujo), clean_text(categoria), monto_flujo, clean_text(desc), hoy_str))
+                run_query("INSERT INTO flujo_extra (tipo, categoria, monto, descripcion, fecha) VALUES (%s,%s,%s,%s,%s)", (clean_text(tipo_flujo), clean_text(categoria), monto_flujo, clean_text(desc), hoy_str))
                 registrar_bitacora("FLUJO EXTRA", f"{tipo_flujo} por ${monto_flujo}: {clean_text(desc)}"); st.success("REGISTRO GUARDADO EN EL LIBRO MAYOR.")
 
     elif menu == "⚙️ CONFIGURACIÓN":
         st.header("PANEL DE SEGURIDAD Y CONFIGURACIÓN VISUAL")
         tab_lista, tab_nuevo, tab_config = st.tabs(["CREDENCIALES ACTIVAS", "NUEVO ADMINISTRADOR", "IDENTIDAD VISUAL"])
         with tab_lista:
-            df_usuarios = get_dataframe("SELECT id, username as USUARIO, rol as ROL FROM usuarios")
+            df_usuarios = get_dataframe('SELECT id as "ID", username as "USUARIO", rol as "ROL" FROM usuarios')
             st.dataframe(df_usuarios, use_container_width=True)
             st.write("---"); st.write("### FORZAR RESTABLECIMIENTO DE CONTRASEÑA")
             with st.form("reset_pwd"):
@@ -529,7 +529,7 @@ if st.session_state['rol'] == 'Administrador':
                 with col_rp1: usr_sel = st.selectbox("USUARIO OBJETIVO", df_usuarios['USUARIO'])
                 with col_rp2: new_pwd = st.text_input("NUEVA CLAVE DE ACCESO", type="password"); st.write(""); btn = st.form_submit_button("EJECUTAR CAMBIO DE CLAVE")
                 if btn:
-                    run_query("UPDATE usuarios SET password=? WHERE username=?", (clean_text(new_pwd), usr_sel)); registrar_bitacora("SEGURIDAD", f"Se forzó el cambio de contraseña para el usuario {usr_sel}"); st.success("LA CONTRASEÑA HA SIDO ACTUALIZADA EN EL SISTEMA.")
+                    run_query("UPDATE usuarios SET password=%s WHERE username=%s", (clean_text(new_pwd), usr_sel)); registrar_bitacora("SEGURIDAD", f"Se forzó el cambio de contraseña para el usuario {usr_sel}"); st.success("LA CONTRASEÑA HA SIDO ACTUALIZADA EN EL SISTEMA.")
         with tab_nuevo:
             with st.form("new_admin"):
                 col_na1, col_na2 = st.columns(2)
@@ -537,7 +537,7 @@ if st.session_state['rol'] == 'Administrador':
                 with col_na2: a_pwd = st.text_input("CONTRASEÑA INICIAL", type="password")
                 st.write(""); 
                 if st.form_submit_button("CONCEDER PERMISOS DE ADMINISTRADOR"):
-                    try: run_query("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, 'ADMINISTRADOR')", (clean_text(a_usr), clean_text(a_pwd))); registrar_bitacora("SEGURIDAD", f"Creado nuevo usuario Administrador: {clean_text(a_usr)}"); st.success("ADMINISTRADOR CREADO Y ACTIVO.")
+                    try: run_query("INSERT INTO usuarios (username, password, rol) VALUES (%s, %s, 'ADMINISTRADOR')", (clean_text(a_usr), clean_text(a_pwd))); registrar_bitacora("SEGURIDAD", f"Creado nuevo usuario Administrador: {clean_text(a_usr)}"); st.success("ADMINISTRADOR CREADO Y ACTIVO.")
                     except: st.error("EL ALIAS INDICADO YA SE ENCUENTRA EN USO.")
         
         with tab_config:
@@ -561,7 +561,7 @@ if st.session_state['rol'] == 'Administrador':
 
     elif menu == "📖 AUDITORÍA":
         st.header("LIBRO DE AUDITORÍA DEL SISTEMA")
-        df_bitacora = get_dataframe("SELECT id as ID, fecha as FECHA_HORA, usuario as RESPONSABLE, accion as EVENTO, detalle as DESCRIPCION FROM bitacora ORDER BY id DESC")
+        df_bitacora = get_dataframe('SELECT id as "ID", fecha as "FECHA_HORA", usuario as "RESPONSABLE", accion as "EVENTO", detalle as "DESCRIPCION" FROM bitacora ORDER BY id DESC')
         st.dataframe(df_bitacora, use_container_width=True)
 
 elif st.session_state['rol'] == 'SOCIO':
@@ -571,16 +571,16 @@ elif st.session_state['rol'] == 'SOCIO':
     
     if menu == "📊 MI ESTADO DE CUENTA":
         st.header("MIS AHORROS Y MOVIMIENTOS")
-        dep = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=? AND tipo='DEPOSITO'", (mi_id,), returning=True) or 0
-        ret = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=? AND tipo='RETIRO'", (mi_id,), returning=True) or 0
+        dep = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='DEPOSITO'", (mi_id,), returning=True) or 0
+        ret = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='RETIRO'", (mi_id,), returning=True) or 0
         st.metric("LIQUIDEZ DISPONIBLE (SALDO)", f"${(dep - ret):,.2f}")
-        st.dataframe(get_dataframe("SELECT fecha as FECHA, tipo as TIPO, monto as MONTO FROM transacciones WHERE socio_id=? ORDER BY id DESC", (mi_id,)), use_container_width=True)
+        st.dataframe(get_dataframe('SELECT fecha as "FECHA", tipo as "TIPO", monto as "MONTO" FROM transacciones WHERE socio_id=%s ORDER BY id DESC', (mi_id,)), use_container_width=True)
         
     elif menu == "🤝 MIS PRÉSTAMOS":
         st.header("MI CARTERA DE CRÉDITOS")
         tab_lista, tab_solicitar = st.tabs(["HISTORIAL", "NUEVA SOLICITUD"])
         with tab_lista:
-            df_mis_prestamos = get_dataframe("SELECT capital_original as CAPITAL, saldo_capital as PENDIENTE, tipo_credito as TIPO, estado as ESTADO, fecha_solicitud as SOLICITADO, fecha_otorgamiento as OTORGADO FROM prestamos WHERE socio_id=?", (mi_id,))
+            df_mis_prestamos = get_dataframe('SELECT capital_original as "CAPITAL", saldo_capital as "PENDIENTE", tipo_credito as "TIPO", estado as "ESTADO", fecha_solicitud as "SOLICITADO", fecha_otorgamiento as "OTORGADO" FROM prestamos WHERE socio_id=%s', (mi_id,))
             if not df_mis_prestamos.empty: st.dataframe(df_mis_prestamos, use_container_width=True)
             else: st.info("Su historial de créditos está vacío.")
                 
@@ -590,6 +590,6 @@ elif st.session_state['rol'] == 'SOCIO':
                 tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)", "ESPECIAL (0% INTERES)"])
                 st.write(""); 
                 if st.form_submit_button("RADICAR SOLICITUD DE CRÉDITO"):
-                    run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (?,?,?,?,?,?)", (mi_id, monto_solicitado, monto_solicitado, clean_text(tipo_cred), 'SOLICITADO', hoy_str))
+                    run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (%s,%s,%s,%s,%s,%s)", (mi_id, monto_solicitado, monto_solicitado, clean_text(tipo_cred), 'SOLICITADO', hoy_str))
                     registrar_bitacora("NUEVA SOLICITUD", f"El socio ID {mi_id} solicitó crédito de ${monto_solicitado}")
                     st.success("LA SOLICITUD HA INGRESADO EXITOSAMENTE A LA BANDEJA DE APROBACIONES.")
