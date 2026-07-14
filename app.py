@@ -37,14 +37,11 @@ def parse_date(date_str):
 # 1. CONEXIÓN POSTGRESQL (NEON CLOUD)
 # ==========================================
 def get_db_connection():
-    # Se conecta a través de los secretos seguros de Streamlit
     return psycopg2.connect(st.secrets["DATABASE_URL"])
 
 def init_db():
     conn = get_db_connection()
     c = conn.cursor()
-    
-    # Creación de tablas en PostgreSQL
     c.execute('''CREATE TABLE IF NOT EXISTS socios (id SERIAL PRIMARY KEY, cedula TEXT UNIQUE, nombres TEXT, apellidos TEXT, telefono TEXT, correo TEXT, fecha_registro TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS transacciones (id SERIAL PRIMARY KEY, socio_id INTEGER REFERENCES socios(id) ON DELETE CASCADE, tipo TEXT, monto REAL, fecha TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS prestamos (id SERIAL PRIMARY KEY, socio_id INTEGER REFERENCES socios(id) ON DELETE CASCADE, capital_original REAL, saldo_capital REAL, tipo_credito TEXT, estado TEXT, fecha_solicitud TEXT, fecha_otorgamiento TEXT)''')
@@ -56,37 +53,27 @@ def init_db():
     c.execute("SELECT * FROM usuarios WHERE username='ADMIN'")
     if not c.fetchone():
         c.execute("INSERT INTO usuarios (username, password, rol) VALUES ('ADMIN', 'ADMIN', 'Administrador')")
-    
     conn.commit()
     conn.close()
 
 def run_query(query, params=(), returning=False):
     conn = get_db_connection()
     c = conn.cursor()
-    
-    # Traducción automática de parámetros SQLite (?) a PostgreSQL (%s)
     query = query.replace('?', '%s')
-    
     is_insert = query.strip().upper().startswith("INSERT")
     if is_insert and "RETURNING" not in query.upper():
         query += " RETURNING id"
-        
     c.execute(query, params)
     
     if is_insert:
         inserted_id = c.fetchone()[0]
-        conn.commit()
-        conn.close()
+        conn.commit(); conn.close()
         return inserted_id
-        
     if returning:
         result = c.fetchone()
-        conn.commit()
-        conn.close()
+        conn.commit(); conn.close()
         return result[0] if result else None
-        
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
     return None
 
 def fetch_data(query, params=()):
@@ -135,31 +122,23 @@ class BancoPDF(FPDF):
 def generar_comprobante(titulo, num_ref, socio_nombre, detalles):
     pdf = BancoPDF()
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 14)
-    pdf.set_text_color(80, 80, 80)
+    pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
     pdf.cell(0, 10, clean_text(titulo), ln=True, align='C')
-    pdf.set_font("Arial", '', 10)
-    pdf.set_text_color(120, 120, 120)
+    pdf.set_font("Arial", '', 10); pdf.set_text_color(120, 120, 120)
     pdf.cell(0, 5, f"REF: {num_ref}   |   FECHA DE EMISION: {format_datetime(get_guayaquil_time())}", ln=True, align='C')
     pdf.ln(10)
-    pdf.set_fill_color(244, 248, 251)
-    pdf.set_draw_color(31, 78, 120)
+    pdf.set_fill_color(244, 248, 251); pdf.set_draw_color(31, 78, 120)
     pdf.rect(10, pdf.get_y(), 190, 12, 'DF')
     pdf.set_xy(15, pdf.get_y() + 2)
-    pdf.set_font("Arial", 'B', 11)
-    pdf.set_text_color(31, 78, 120)
-    pdf.cell(0, 8, f"SOCIO / CLIENTE: {clean_text(socio_nombre)}", ln=True)
-    pdf.ln(8)
+    pdf.set_font("Arial", 'B', 11); pdf.set_text_color(31, 78, 120)
+    pdf.cell(0, 8, f"SOCIO / CLIENTE: {clean_text(socio_nombre)}", ln=True); pdf.ln(8)
     for key, val in detalles.items():
-        pdf.set_font("Arial", 'B', 10)
-        pdf.set_text_color(80, 80, 80)
+        pdf.set_font("Arial", 'B', 10); pdf.set_text_color(80, 80, 80)
         pdf.cell(60, 10, f"{key}:", border=0)
         if "TOTAL" in key or "ESTADO" in key or "PENDIENTE" in key:
-            pdf.set_font("Arial", 'B', 11)
-            pdf.set_text_color(31, 78, 120)
+            pdf.set_font("Arial", 'B', 11); pdf.set_text_color(31, 78, 120)
         else:
-            pdf.set_font("Arial", '', 11)
-            pdf.set_text_color(51, 51, 51)
+            pdf.set_font("Arial", '', 11); pdf.set_text_color(51, 51, 51)
         pdf.cell(0, 10, str(val), border=0, ln=True)
     try: return pdf.output(dest='S').encode('latin1')
     except: return bytes(pdf.output())
@@ -169,7 +148,6 @@ def generar_comprobante(titulo, num_ref, socio_nombre, detalles):
 # ==========================================
 st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
 
-# Verificación e Inicialización de Base de Datos Segura
 if 'db_initialized' not in st.session_state:
     try:
         init_db()
@@ -317,12 +295,9 @@ if st.session_state['rol'] == 'Administrador':
         def crear_pdf_resumen():
             pdf = BancoPDF()
             pdf.add_page()
-            pdf.set_font("Arial", 'B', 14)
-            pdf.set_text_color(80, 80, 80)
+            pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
             pdf.cell(0, 10, clean_text("Resumen Financiero Consolidado"), ln=True, align='C')
-            pdf.set_font("Arial", '', 10)
-            pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C')
-            pdf.ln(10)
+            pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(10)
             def add_row(label, value, fill_row):
                 if fill_row: pdf.set_fill_color(244, 248, 251)
                 else: pdf.set_fill_color(255, 255, 255)
@@ -443,7 +418,8 @@ if st.session_state['rol'] == 'Administrador':
 
     elif menu == "🤝 CRÉDITOS":
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
-        tab_solicitudes, tab_otorgar, tab_cobrar = st.tabs(["REVISAR SOLICITUDES", "OTORGAR CRÉDITO DIRECTO", "COBRAR CUOTAS"])
+        tab_solicitudes, tab_otorgar, tab_cobrar, tab_reporte = st.tabs(["REVISAR SOLICITUDES", "OTORGAR CRÉDITO DIRECTO", "COBRAR CUOTAS", "REPORTE DE VIGENTES"])
+        
         with tab_solicitudes:
             solicitudes = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.capital_original as "CAPITAL_ORIGINAL", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'SOLICITADO\'')
             if not solicitudes.empty:
@@ -480,31 +456,129 @@ if st.session_state['rol'] == 'Administrador':
         with tab_cobrar:
             prestamos_vig = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
             if not prestamos_vig.empty:
-                p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'])
-                p_id = int(p_sel_str.split(" - ")[0]); nombre_socio = p_sel_str.split(" - ")[1]
+                # Modificación: Mostrar el monto en la lista desplegable
+                opciones = prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'] + " - Capital Original: $" + prestamos_vig['CAPITAL_ORIGINAL'].astype(str)
+                p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", opciones)
+                
+                p_id = int(p_sel_str.split(" - ")[0])
+                nombre_socio = p_sel_str.split(" - ")[1]
                 p_data = prestamos_vig[prestamos_vig['id'] == p_id].iloc[0]
                 
                 col_f1, col_f2 = st.columns([1, 2])
                 with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
                 interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], fecha_cobro)
                 with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
-                st.warning(f"💰 **SALDO CAPITAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
                 
-                with st.form("form_pago"):
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
-                    with col_p2: pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
-                    st.write("")
-                    if st.form_submit_button("CONFIRMAR RECEPCIÓN DE PAGO"):
-                        run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
-                        pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
-                        registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
-                        nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
-                        if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
-                        else: st.success("PAGO APLICADO CORRECTAMENTE.")
-                        pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
-                        st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
-            if 'ultimo_recibo_pago' in st.session_state: st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
+                st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
+                
+                # Modificación: Fuera de un st.form para permitir reactividad (Suma en vivo)
+                st.write("### DETALLE DE PAGO")
+                col_p1, col_p2 = st.columns(2)
+                with col_p1: 
+                    pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
+                with col_p2: 
+                    pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
+                
+                # Suma dinámica en vivo
+                total_a_pagar = pago_cap + pago_int
+                st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
+                
+                if st.button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
+                    run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
+                    pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                    registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
+                    nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                    if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
+                    else: st.success("PAGO APLICADO CORRECTAMENTE.")
+                    pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
+                    st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
+            
+            if 'ultimo_recibo_pago' in st.session_state: 
+                st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
+        
+        # NUEVA PESTAÑA: REPORTE DE VIGENTES
+        with tab_reporte:
+            st.write("### REPORTE OFICIAL DE CRÉDITOS VIGENTES")
+            df_activos = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
+            
+            if not df_activos.empty:
+                reporte_data = []
+                total_cap = 0.0
+                total_int = 0.0
+                
+                for _, row in df_activos.iterrows():
+                    int_pend, meses = calcular_interes_pendiente(row['id'], row['CAPITAL_ORIGINAL'], row['TIPO_CREDITO'], row['FECHA_OTORGAMIENTO'], hoy_dt)
+                    total_cap += row['SALDO_CAPITAL']
+                    total_int += int_pend
+                    reporte_data.append({
+                        "SOCIO": f"{row['nombres']} {row['apellidos']}",
+                        "FECHA OTORG.": row['FECHA_OTORGAMIENTO'],
+                        "MESES": meses,
+                        "CAPITAL VIGENTE": row['SALDO_CAPITAL'],
+                        "INTERÉS GENERADO": round(int_pend, 2),
+                        "TOTAL ESPERADO": round(row['SALDO_CAPITAL'] + int_pend, 2)
+                    })
+                
+                df_rep = pd.DataFrame(reporte_data)
+                st.dataframe(df_rep, use_container_width=True)
+                
+                col_t1, col_t2, col_t3 = st.columns(3)
+                col_t1.metric("TOTAL CAPITAL EN LA CALLE", f"${total_cap:,.2f}")
+                col_t2.metric("TOTAL INTERESES POR COBRAR", f"${total_int:,.2f}")
+                col_t3.metric("GRAN TOTAL ESPERADO", f"${(total_cap + total_int):,.2f}")
+                
+                def crear_pdf_reporte_creditos():
+                    pdf = BancoPDF()
+                    pdf.add_page()
+                    pdf.set_font("Arial", 'B', 14)
+                    pdf.set_text_color(80, 80, 80)
+                    pdf.cell(0, 10, clean_text("Reporte de Creditos Activos (En la Calle)"), ln=True, align='C')
+                    pdf.set_font("Arial", '', 10)
+                    pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C')
+                    pdf.ln(5)
+                    
+                    pdf.set_fill_color(31, 78, 120)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.set_draw_color(31, 78, 120)
+                    pdf.set_font("Arial", 'B', 9)
+                    anchos = [55, 25, 20, 30, 30, 30]
+                    cabs = ["SOCIO", "FECHA", "MESES", "CAPITAL", "INTERES", "TOTAL"]
+                    for i, h in enumerate(cabs):
+                        pdf.cell(anchos[i], 10, h, border=1, fill=True, align='C')
+                    pdf.ln()
+                    
+                    pdf.set_draw_color(226, 232, 240)
+                    fill = False
+                    for d in reporte_data:
+                        if fill: pdf.set_fill_color(244, 248, 251)
+                        else: pdf.set_fill_color(255, 255, 255)
+                        pdf.set_text_color(51, 51, 51)
+                        pdf.set_font("Arial", '', 8)
+                        pdf.cell(anchos[0], 10, str(d['SOCIO'])[:28], border=1, fill=True)
+                        pdf.cell(anchos[1], 10, str(d['FECHA OTORG.']), border=1, fill=True, align='C')
+                        pdf.cell(anchos[2], 10, str(d['MESES']), border=1, fill=True, align='C')
+                        pdf.cell(anchos[3], 10, f"${d['CAPITAL VIGENTE']:,.2f}", border=1, fill=True, align='R')
+                        pdf.cell(anchos[4], 10, f"${d['INTERÉS GENERADO']:,.2f}", border=1, fill=True, align='R')
+                        pdf.set_font("Arial", 'B', 8)
+                        pdf.cell(anchos[5], 10, f"${d['TOTAL ESPERADO']:,.2f}", border=1, fill=True, align='R')
+                        pdf.ln()
+                        fill = not fill
+                    
+                    pdf.ln(5)
+                    pdf.set_fill_color(31, 78, 120)
+                    pdf.set_text_color(255, 255, 255)
+                    pdf.set_font("Arial", 'B', 10)
+                    pdf.cell(100, 10, "TOTALES GENERALES:", border=0, fill=True, align='R')
+                    pdf.cell(30, 10, f"${total_cap:,.2f}", border=0, fill=True, align='R')
+                    pdf.cell(30, 10, f"${total_int:,.2f}", border=0, fill=True, align='R')
+                    pdf.cell(30, 10, f"${(total_cap+total_int):,.2f}", border=0, fill=True, align='R')
+                    
+                    try: return pdf.output(dest='S').encode('latin1')
+                    except: return bytes(pdf.output())
+                    
+                st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
+            else:
+                st.info("No hay créditos vigentes en este momento.")
 
     elif menu == "📊 INGRESOS Y EGRESOS":
         st.header("GESTIÓN DE CAJA CHICA Y EXTRAORDINARIOS")
