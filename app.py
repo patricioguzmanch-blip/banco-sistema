@@ -1,5 +1,4 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 from datetime import datetime
 import pytz
@@ -9,6 +8,11 @@ import io
 import os
 from fpdf import FPDF
 import plotly.express as px
+import psycopg2
+import warnings
+
+# Ocultar advertencias de Pandas sobre conexiones crudas
+warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
 # 0. FUNCIONES DE UTILIDAD (REGLAS DE NEGOCIO)
@@ -18,69 +22,85 @@ def get_guayaquil_time():
     return datetime.now(tz)
 
 def clean_text(text):
-    if not text:
-        return ""
+    if not text: return ""
     text = str(text).upper()
-    text = ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
-    return text
+    return ''.join(c for c in unicodedata.normalize('NFD', text) if unicodedata.category(c) != 'Mn')
 
-def format_date(dt):
-    return dt.strftime("%d/%m/%Y")
-
-def format_datetime(dt):
-    return dt.strftime("%d/%m/%Y %H:%M:%S")
+def format_date(dt): return dt.strftime("%d/%m/%Y")
+def format_datetime(dt): return dt.strftime("%d/%m/%Y %H:%M:%S")
 
 def parse_date(date_str):
-    try:
-        return datetime.strptime(date_str, "%d/%m/%Y")
-    except ValueError:
-        return datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
+    try: return datetime.strptime(date_str, "%d/%m/%Y")
+    except ValueError: return datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
 
 # ==========================================
-# 1. CONFIGURACIÓN DE BASE DE DATOS
+# 1. CONEXIÓN POSTGRESQL (NEON CLOUD)
 # ==========================================
-DB_NAME = 'banco_guzman_v2.db'
+def get_db_connection():
+    # Se conecta a través de los secretos seguros de Streamlit
+    return psycopg2.connect(st.secrets["DATABASE_URL"])
 
 def init_db():
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS socios (id INTEGER PRIMARY KEY AUTOINCREMENT, cedula TEXT UNIQUE, nombres TEXT, apellidos TEXT, telefono TEXT, correo TEXT, fecha_registro TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS transacciones (id INTEGER PRIMARY KEY AUTOINCREMENT, socio_id INTEGER, tipo TEXT, monto REAL, fecha TEXT, FOREIGN KEY(socio_id) REFERENCES socios(id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS prestamos (id INTEGER PRIMARY KEY AUTOINCREMENT, socio_id INTEGER, capital_original REAL, saldo_capital REAL, tipo_credito TEXT, estado TEXT, fecha_solicitud TEXT, fecha_otorgamiento TEXT, FOREIGN KEY(socio_id) REFERENCES socios(id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS pagos (id INTEGER PRIMARY KEY AUTOINCREMENT, prestamo_id INTEGER, pago_capital REAL, pago_interes REAL, fecha TEXT, FOREIGN KEY(prestamo_id) REFERENCES prestamos(id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS flujo_extra (id INTEGER PRIMARY KEY AUTOINCREMENT, tipo TEXT, categoria TEXT, monto REAL, descripcion TEXT, fecha TEXT)''')
-    c.execute('''CREATE TABLE IF NOT EXISTS usuarios (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT, rol TEXT, socio_id INTEGER NULL, FOREIGN KEY(socio_id) REFERENCES socios(id))''')
-    c.execute('''CREATE TABLE IF NOT EXISTS bitacora (id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT, accion TEXT, detalle TEXT, fecha TEXT)''')
+    
+    # Creación de tablas en PostgreSQL
+    c.execute('''CREATE TABLE IF NOT EXISTS socios (id SERIAL PRIMARY KEY, cedula TEXT UNIQUE, nombres TEXT, apellidos TEXT, telefono TEXT, correo TEXT, fecha_registro TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS transacciones (id SERIAL PRIMARY KEY, socio_id INTEGER REFERENCES socios(id) ON DELETE CASCADE, tipo TEXT, monto REAL, fecha TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS prestamos (id SERIAL PRIMARY KEY, socio_id INTEGER REFERENCES socios(id) ON DELETE CASCADE, capital_original REAL, saldo_capital REAL, tipo_credito TEXT, estado TEXT, fecha_solicitud TEXT, fecha_otorgamiento TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS pagos (id SERIAL PRIMARY KEY, prestamo_id INTEGER REFERENCES prestamos(id) ON DELETE CASCADE, pago_capital REAL, pago_interes REAL, fecha TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS flujo_extra (id SERIAL PRIMARY KEY, tipo TEXT, categoria TEXT, monto REAL, descripcion TEXT, fecha TEXT)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS usuarios (id SERIAL PRIMARY KEY, username TEXT UNIQUE, password TEXT, rol TEXT, socio_id INTEGER REFERENCES socios(id) ON DELETE CASCADE)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS bitacora (id SERIAL PRIMARY KEY, usuario TEXT, accion TEXT, detalle TEXT, fecha TEXT)''')
+    
     c.execute("SELECT * FROM usuarios WHERE username='ADMIN'")
     if not c.fetchone():
         c.execute("INSERT INTO usuarios (username, password, rol) VALUES ('ADMIN', 'ADMIN', 'Administrador')")
+    
     conn.commit()
     conn.close()
 
 def run_query(query, params=(), returning=False):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
+    
+    # Traducción automática de parámetros SQLite (?) a PostgreSQL (%s)
+    query = query.replace('?', '%s')
+    
+    is_insert = query.strip().upper().startswith("INSERT")
+    if is_insert and "RETURNING" not in query.upper():
+        query += " RETURNING id"
+        
     c.execute(query, params)
+    
+    if is_insert:
+        inserted_id = c.fetchone()[0]
+        conn.commit()
+        conn.close()
+        return inserted_id
+        
     if returning:
         result = c.fetchone()
         conn.commit()
         conn.close()
         return result[0] if result else None
-    last_id = c.lastrowid
+        
     conn.commit()
     conn.close()
-    return last_id
+    return None
 
 def fetch_data(query, params=()):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
     c = conn.cursor()
+    query = query.replace('?', '%s')
     c.execute(query, params)
     data = c.fetchall()
     conn.close()
     return data
 
 def get_dataframe(query, params=()):
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_db_connection()
+    query = query.replace('?', '%s')
     df = pd.read_sql_query(query, conn, params=params)
     conn.close()
     return df
@@ -91,25 +111,19 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# MOTOR DE REPORTES PDF
+# MOTOR DE REPORTES PDF 
 # ==========================================
 class BancoPDF(FPDF):
     def header(self):
-        # Logo reducido a W=28 y adaptativo
         if os.path.exists('logo_banco.png'):
             self.image('logo_banco.png', 10, 8, w=28)
-        
         self.set_y(15)
         self.set_font('Arial', 'B', 20)
         self.set_text_color(31, 78, 120)
         self.cell(0, 10, clean_text("Banco de la Familia Guzman"), ln=True, align='C')
-        
-        # Linea divisoria desplazada al Y=42 para NUNCA chocar con el logo
         self.set_draw_color(31, 78, 120)
         self.set_line_width(0.8)
         self.line(10, 42, 200, 42)
-        
-        # Inicio del contenido
         self.set_y(47)
 
     def footer(self):
@@ -154,50 +168,38 @@ def generar_comprobante(titulo, num_ref, socio_nombre, detalles):
 # INICIALIZACIÓN Y CSS DINÁMICO
 # ==========================================
 st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
-init_db()
+
+# Verificación e Inicialización de Base de Datos Segura
+if 'db_initialized' not in st.session_state:
+    try:
+        init_db()
+        st.session_state['db_initialized'] = True
+    except Exception as e:
+        st.error(f"Falla de conexión con la base de datos Neon. Verifica tus Secrets: {e}")
+        st.stop()
 
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None})
 
-# CSS GLOBAL (Barra lateral sin scroll y logo pequeño)
 st.markdown("""
 <style>
-    /* Logo de sidebar pequeño */
     [data-testid="stSidebar"] img { max-width: 130px !important; margin: 0 auto !important; display: block; background-color: transparent !important; }
-    /* Bloquear scroll en sidebar y empaquetar opciones */
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
     [data-testid="stSidebar"] .stRadio > div { gap: 0.1rem; }
-    /* Soporte PNG en toda la app */
     img { background-color: transparent !important; }
 </style>
 """, unsafe_allow_html=True)
 
 if not st.session_state['logged_in']:
-    # CSS EXCLUSIVO PARA LOGIN (4 Colores, Sin scroll)
     st.markdown("""
     <style>
-        /* Color 1: Fondo Azul Marino Profundo */
         .stApp { background-color: #0A192F !important; overflow: hidden !important; height: 100vh; }
         .block-container { padding-top: 2rem; max-height: 100vh; overflow: hidden; }
         header { display: none !important; }
-        
-        /* Color 2: Tarjeta Blanca */
-        div[data-testid="stForm"] {
-            background-color: #FFFFFF;
-            padding: 2rem;
-            border-radius: 12px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-            border-top: 5px solid #F5A623; /* Color 3: Dorado Ámbar */
-        }
-        
-        /* Color 4: Textos Gris Pizarra */
+        div[data-testid="stForm"] { background-color: #FFFFFF; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-top: 5px solid #F5A623; }
         h1, h2, h3, p, label { color: #333333 !important; }
-        
-        /* Botón dorado */
-        div.stButton > button:first-child {
-            background-color: #F5A623; color: #FFFFFF !important; border: none; font-weight: bold; width: 100%;
-        }
+        div.stButton > button:first-child { background-color: #F5A623; color: #FFFFFF !important; border: none; font-weight: bold; width: 100%; }
         div.stButton > button:first-child:hover { background-color: #E09612; }
     </style>
     """, unsafe_allow_html=True)
@@ -206,8 +208,7 @@ if not st.session_state['logged_in']:
     with col2:
         if os.path.exists("logo_banco.png"):
             col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
-            with col_l2:
-                st.image("logo_banco.png", use_container_width=True)
+            with col_l2: st.image("logo_banco.png", use_container_width=True)
         else:
             st.markdown("<h1 style='text-align: center; color: #FFFFFF !important;'>🏦 Banco de la Familia</h1>", unsafe_allow_html=True)
             
@@ -223,10 +224,8 @@ if not st.session_state['logged_in']:
                     st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': usuario_db[0][1], 'socio_id': usuario_db[0][2]})
                     registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {usuario_db[0][1]}")
                     st.rerun()
-                else:
-                    st.error("Credenciales incorrectas.")
+                else: st.error("Credenciales incorrectas.")
                     
-        # Derechos de desarrollador
         st.markdown("""
         <div style='text-align: center; margin-top: 20px; color: #8892B0; font-size: 13px; font-family: sans-serif;'>
             © 2026 Banco de la Familia Guzmán.<br>
@@ -236,7 +235,6 @@ if not st.session_state['logged_in']:
         """, unsafe_allow_html=True)
     st.stop()
 
-# --- CSS PARA EL RESTO DE LA APP ---
 st.markdown("""
 <style>
     .stApp { background-color: #F4F8FB !important; overflow: auto !important; }
@@ -248,9 +246,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- PANEL LATERAL (SIDEBAR) ---
-if os.path.exists("logo_banco.png"):
-    st.sidebar.image("logo_banco.png")
+if os.path.exists("logo_banco.png"): st.sidebar.image("logo_banco.png")
 st.sidebar.title("👤 Panel de Control")
 st.sidebar.write(f"**USUARIO:** {st.session_state['username']}")
 st.sidebar.write(f"**ROL:** {clean_text(st.session_state['rol'])}")
@@ -278,15 +274,11 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
     interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = ?", (prestamo_id,), returning=True) or 0.0
     return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
 
-# ==========================================
-# 3. VISTA: ADMINISTRADOR
-# ==========================================
 if st.session_state['rol'] == 'Administrador':
     menu = st.sidebar.radio("NAVEGACIÓN", ["🏢 INICIO Y DASHBOARD", "👥 SOCIOS", "💵 DEPÓSITOS Y RETIROS", "🤝 CRÉDITOS", "📊 INGRESOS Y EGRESOS", "⚙️ CONFIGURACIÓN", "📖 AUDITORÍA"])
     if st.sidebar.button("CERRAR SESIÓN"):
         registrar_bitacora("CIERRE DE SESION", "El usuario salió del sistema")
-        st.session_state.clear()
-        st.rerun()
+        st.session_state.clear(); st.rerun()
 
     if menu == "🏢 INICIO Y DASHBOARD":
         st.header("RESUMEN FINANCIERO DEL BANCO")
@@ -334,10 +326,8 @@ if st.session_state['rol'] == 'Administrador':
             def add_row(label, value, fill_row):
                 if fill_row: pdf.set_fill_color(244, 248, 251)
                 else: pdf.set_fill_color(255, 255, 255)
-                pdf.set_text_color(51, 51, 51)
-                pdf.set_font("Arial", 'B', 11)
-                pdf.cell(100, 10, label, border=1, fill=True)
-                pdf.set_font("Arial", '', 11)
+                pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", 'B', 11)
+                pdf.cell(100, 10, label, border=1, fill=True); pdf.set_font("Arial", '', 11)
                 pdf.cell(50, 10, value, border=1, fill=True, ln=True, align='R')
             pdf.set_draw_color(226, 232, 240)
             add_row("TOTAL DEPOSITOS:", f"${t_dep:,.2f}", False)
@@ -347,9 +337,7 @@ if st.session_state['rol'] == 'Administrador':
             add_row("TOTAL EGRESOS (GASTOS):", f"${t_egr_ex:,.2f}", False)
             add_row("CREDITOS VIGENTES (EN CALLE):", f"${cap_calle:,.2f}", True)
             pdf.ln(5)
-            pdf.set_fill_color(31, 78, 120)
-            pdf.set_text_color(255, 255, 255)
-            pdf.set_font("Arial", 'B', 14)
+            pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
             pdf.cell(100, 12, "SALDO ACTUAL EN CAJA:", border=0, fill=True)
             pdf.cell(50, 12, f"${saldo_caja:,.2f}", border=0, fill=True, ln=True, align='R')
             try: return pdf.output(dest='S').encode('latin1')
@@ -373,16 +361,10 @@ if st.session_state['rol'] == 'Administrador':
                 def crear_pdf_socios():
                     pdf = BancoPDF()
                     pdf.add_page()
-                    pdf.set_font("Arial", 'B', 14)
-                    pdf.set_text_color(80, 80, 80)
+                    pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
                     pdf.cell(0, 10, clean_text("Reporte Oficial de Socios"), ln=True, align='C')
-                    pdf.set_font("Arial", '', 10)
-                    pdf.cell(0, 5, f"FECHA: {hoy_str}", ln=True, align='C')
-                    pdf.ln(5)
-                    pdf.set_fill_color(31, 78, 120)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_draw_color(31, 78, 120)
-                    pdf.set_font("Arial", 'B', 10)
+                    pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA: {hoy_str}", ln=True, align='C'); pdf.ln(5)
+                    pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_draw_color(31, 78, 120); pdf.set_font("Arial", 'B', 10)
                     anchos = [30, 45, 45, 35, 30]
                     cabeceras = ["CEDULA", "NOMBRES", "APELLIDOS", "SALDO", "CREDITO"]
                     for i, h in enumerate(cabeceras): pdf.cell(anchos[i], 10, h, border=1, fill=True, align='C')
@@ -392,16 +374,13 @@ if st.session_state['rol'] == 'Administrador':
                     for index, row in df_reporte.iterrows():
                         if fill: pdf.set_fill_color(244, 248, 251)
                         else: pdf.set_fill_color(255, 255, 255)
-                        pdf.set_text_color(51, 51, 51)
-                        pdf.set_font("Arial", '', 9)
+                        pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", '', 9)
                         pdf.cell(anchos[0], 10, str(row['CEDULA']), border=1, fill=True, align='C')
                         pdf.cell(anchos[1], 10, str(row['NOMBRES'])[:20], border=1, fill=True)
                         pdf.cell(anchos[2], 10, str(row['APELLIDOS'])[:20], border=1, fill=True)
-                        pdf.set_font("Arial", 'B', 9)
-                        pdf.set_text_color(31, 78, 120)
+                        pdf.set_font("Arial", 'B', 9); pdf.set_text_color(31, 78, 120)
                         pdf.cell(anchos[3], 10, f"${row['SALDO CUENTA']:.2f}", border=1, fill=True, align='R')
-                        pdf.set_text_color(51, 51, 51)
-                        pdf.set_font("Arial", '', 9)
+                        pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", '', 9)
                         pdf.cell(anchos[4], 10, str(row['TIENE CREDITO']), border=1, fill=True, align='C')
                         pdf.ln()
                         fill = not fill
@@ -422,7 +401,7 @@ if st.session_state['rol'] == 'Administrador':
                             run_query("INSERT INTO usuarios (username, password, rol, socio_id) VALUES (?, ?, 'SOCIO', ?)", (c_ced, c_ced, nuevo_id))
                             registrar_bitacora("NUEVO SOCIO", f"Registrado Socio: {clean_text(nom)} {clean_text(ape)} (CI: {c_ced})")
                             st.success("SOCIO REGISTRADO CON ÉXITO.")
-                        except sqlite3.IntegrityError: st.error("LA CÉDULA YA ESTÁ REGISTRADA.")
+                        except Exception: st.error("LA CÉDULA YA ESTÁ REGISTRADA O HUBO UN ERROR.")
                     else: st.error("LA CÉDULA ES OBLIGATORIA.")
 
         with tab3:
@@ -458,11 +437,9 @@ if st.session_state['rol'] == 'Administrador':
                     tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (?,?,?,?)", (s_id, clean_text(tipo), monto, hoy_str))
                     registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
                     pdf_bytes = generar_comprobante("COMPROBANTE DE TRANSACCION", f"TX-{tx_id}", nombre_socio, {"TIPO DE MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
-                    st.session_state['ultimo_recibo_tx'] = pdf_bytes
-                    st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
+                    st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
                     st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
-            if 'ultimo_recibo_tx' in st.session_state:
-                st.download_button("📥 DESCARGAR COMPROBANTE EN PDF", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf")
+            if 'ultimo_recibo_tx' in st.session_state: st.download_button("📥 DESCARGAR COMPROBANTE EN PDF", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf")
 
     elif menu == "🤝 CRÉDITOS":
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
@@ -498,8 +475,7 @@ if st.session_state['rol'] == 'Administrador':
                     if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE"):
                         s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
                         run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (?,?,?,?,?,?,?)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
-                        registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}")
-                        st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
+                        registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}"); st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
         
         with tab_cobrar:
             prestamos_vig = get_dataframe("SELECT p.id, s.nombres, s.apellidos, p.saldo_capital, p.capital_original, p.fecha_otorgamiento, p.tipo_credito FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = 'VIGENTE'")
@@ -527,10 +503,8 @@ if st.session_state['rol'] == 'Administrador':
                         if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = ?", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
                         else: st.success("PAGO APLICADO CORRECTAMENTE.")
                         pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
-                        st.session_state['ultimo_recibo_pago'] = pdf_bytes
-                        st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
-            if 'ultimo_recibo_pago' in st.session_state:
-                st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
+                        st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
+            if 'ultimo_recibo_pago' in st.session_state: st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
 
     elif menu == "📊 INGRESOS Y EGRESOS":
         st.header("GESTIÓN DE CAJA CHICA Y EXTRAORDINARIOS")
@@ -541,13 +515,11 @@ if st.session_state['rol'] == 'Administrador':
             st.write(""); 
             if st.form_submit_button("REGISTRAR ASIENTO CONTABLE"):
                 run_query("INSERT INTO flujo_extra (tipo, categoria, monto, descripcion, fecha) VALUES (?,?,?,?,?)", (clean_text(tipo_flujo), clean_text(categoria), monto_flujo, clean_text(desc), hoy_str))
-                registrar_bitacora("FLUJO EXTRA", f"{tipo_flujo} por ${monto_flujo}: {clean_text(desc)}")
-                st.success("REGISTRO GUARDADO EN EL LIBRO MAYOR.")
+                registrar_bitacora("FLUJO EXTRA", f"{tipo_flujo} por ${monto_flujo}: {clean_text(desc)}"); st.success("REGISTRO GUARDADO EN EL LIBRO MAYOR.")
 
     elif menu == "⚙️ CONFIGURACIÓN":
         st.header("PANEL DE SEGURIDAD Y CONFIGURACIÓN VISUAL")
-        tab_lista, tab_nuevo, tab_config = st.tabs(["CREDENCIALES ACTIVAS", "NUEVO ADMINISTRADOR", "IDENTIDAD VISUAL (LOGOTIPO)"])
-        
+        tab_lista, tab_nuevo, tab_config = st.tabs(["CREDENCIALES ACTIVAS", "NUEVO ADMINISTRADOR", "IDENTIDAD VISUAL"])
         with tab_lista:
             df_usuarios = get_dataframe("SELECT id, username as USUARIO, rol as ROL FROM usuarios")
             st.dataframe(df_usuarios, use_container_width=True)
@@ -558,7 +530,6 @@ if st.session_state['rol'] == 'Administrador':
                 with col_rp2: new_pwd = st.text_input("NUEVA CLAVE DE ACCESO", type="password"); st.write(""); btn = st.form_submit_button("EJECUTAR CAMBIO DE CLAVE")
                 if btn:
                     run_query("UPDATE usuarios SET password=? WHERE username=?", (clean_text(new_pwd), usr_sel)); registrar_bitacora("SEGURIDAD", f"Se forzó el cambio de contraseña para el usuario {usr_sel}"); st.success("LA CONTRASEÑA HA SIDO ACTUALIZADA EN EL SISTEMA.")
-                    
         with tab_nuevo:
             with st.form("new_admin"):
                 col_na1, col_na2 = st.columns(2)
@@ -566,30 +537,24 @@ if st.session_state['rol'] == 'Administrador':
                 with col_na2: a_pwd = st.text_input("CONTRASEÑA INICIAL", type="password")
                 st.write(""); 
                 if st.form_submit_button("CONCEDER PERMISOS DE ADMINISTRADOR"):
-                    try:
-                        run_query("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, 'ADMINISTRADOR')", (clean_text(a_usr), clean_text(a_pwd)))
-                        registrar_bitacora("SEGURIDAD", f"Creado nuevo usuario Administrador: {clean_text(a_usr)}"); st.success("ADMINISTRADOR CREADO Y ACTIVO.")
+                    try: run_query("INSERT INTO usuarios (username, password, rol) VALUES (?, ?, 'ADMINISTRADOR')", (clean_text(a_usr), clean_text(a_pwd))); registrar_bitacora("SEGURIDAD", f"Creado nuevo usuario Administrador: {clean_text(a_usr)}"); st.success("ADMINISTRADOR CREADO Y ACTIVO.")
                     except: st.error("EL ALIAS INDICADO YA SE ENCUENTRA EN USO.")
         
         with tab_config:
             st.write("### CONFIGURAR LOGOTIPO DEL BANCO")
-            st.write("Al subir una imagen PNG, esta se adaptará automáticamente a los menús, al sistema de inicio y a los PDFs oficiales.")
-            uploaded_logo = st.file_uploader("Subir nuevo logotipo", type=['png', 'jpg', 'jpeg'])
-            if uploaded_logo is not None:
-                with open("logo_banco.png", "wb") as f: f.write(uploaded_logo.getbuffer())
-                registrar_bitacora("CONFIGURACION", "Logotipo del banco actualizado."); st.success("¡Logotipo actualizado exitosamente!"); st.rerun()
+            st.info("💡 **Despliegue en la Nube:** Para que la imagen del logotipo sea permanente en internet, debes añadir el archivo `logo_banco.png` directamente a tu repositorio en GitHub.")
             if os.path.exists("logo_banco.png"):
-                st.write("#### Logotipo Actual:"); st.image("logo_banco.png", width=150)
-                if st.button("ELIMINAR LOGOTIPO ACTUAL"): os.remove("logo_banco.png"); registrar_bitacora("CONFIGURACION", "Logotipo del banco eliminado."); st.rerun()
+                st.image("logo_banco.png", width=150)
+            else:
+                st.warning("No se encontró el archivo 'logo_banco.png' en la carpeta actual del proyecto.")
                         
-        st.write("<br><br>", unsafe_allow_html=True)
-        st.error("### ⚠️ ZONA DE PELIGRO: FORMATEO DEL SISTEMA")
+        st.write("<br><br>", unsafe_allow_html=True); st.error("### ⚠️ ZONA DE PELIGRO: FORMATEO DEL SISTEMA")
         with st.expander("DESPLEGAR OPCIONES DE REINICIO TOTAL"):
             confirm_text = st.text_input("Transcriba exactamente: 'BORRAR TODO'")
             if st.button("🔥 PURGAR BASE DE DATOS Y REINICIAR", type="primary"):
                 if confirm_text == 'BORRAR TODO':
-                    for table in ["pagos", "prestamos", "transacciones", "flujo_extra", "usuarios", "socios", "bitacora", "sqlite_sequence"]:
-                        run_query(f"DELETE FROM {table}")
+                    for table in ["pagos", "prestamos", "transacciones", "flujo_extra", "usuarios", "socios", "bitacora"]:
+                        run_query(f"DELETE FROM {table} CASCADE")
                     run_query("INSERT INTO usuarios (username, password, rol) VALUES ('ADMIN', 'ADMIN', 'Administrador')")
                     st.success("PURGA COMPLETADA. EL SISTEMA SE REINICIARÁ AHORA."); st.session_state.clear(); st.rerun()
                 else: st.error("La frase de seguridad no coincide. Operación abortada.")
