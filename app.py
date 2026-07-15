@@ -97,48 +97,70 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# MOTOR DE REPORTES PDF 
+# MOTOR DE REPORTES (TIPO VOUCHER/TICKET)
 # ==========================================
-class BancoPDF(FPDF):
+class VoucherPDF(FPDF):
     def header(self):
         if os.path.exists('logo_banco.png'):
-            self.image('logo_banco.png', 10, 8, w=28)
-        self.set_y(15)
-        self.set_font('Arial', 'B', 20)
-        self.set_text_color(31, 78, 120)
-        self.cell(0, 10, clean_text("Banco de la Familia Guzman"), ln=True, align='C')
-        self.set_draw_color(31, 78, 120)
-        self.set_line_width(0.8)
-        self.line(10, 42, 200, 42)
-        self.set_y(47)
+            self.image('logo_banco.png', 25, 5, w=30)
+        self.set_y(35)
+        self.set_font('Arial', 'B', 11)
+        self.set_text_color(18, 43, 77)
+        self.cell(0, 5, clean_text("BANCO FAMILIA GUZMAN"), ln=True, align='C')
+        self.set_font('Arial', '', 7)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 4, "COMPROBANTE ELECTRONICO", ln=True, align='C')
+        self.set_draw_color(200, 200, 200)
+        self.line(5, 46, 75, 46)
+        self.set_y(49)
 
     def footer(self):
         self.set_y(-15)
-        self.set_font('Arial', 'I', 8)
+        self.set_font('Arial', 'I', 7)
         self.set_text_color(150, 150, 150)
-        self.cell(0, 10, f'Documento Oficial Generado por el Sistema - Pagina {self.page_no()}', 0, 0, 'C')
+        self.cell(0, 4, "Gracias por su confianza", ln=True, align='C')
+        self.cell(0, 4, "Generado por Sistema Central", ln=True, align='C')
 
-def generar_comprobante(titulo, num_ref, socio_nombre, detalles):
-    pdf = BancoPDF()
+def generar_voucher(titulo, num_ref, socio_nombre, detalles):
+    # Formato Ticket de 80mm de ancho x 180mm de alto
+    pdf = VoucherPDF(orientation='P', unit='mm', format=(80, 180))
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
-    pdf.cell(0, 10, clean_text(titulo), ln=True, align='C')
-    pdf.set_font("Arial", '', 10); pdf.set_text_color(120, 120, 120)
-    pdf.cell(0, 5, f"REF: {num_ref}   |   FECHA DE EMISION: {format_datetime(get_guayaquil_time())}", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_fill_color(244, 248, 251); pdf.set_draw_color(31, 78, 120)
-    pdf.rect(10, pdf.get_y(), 190, 12, 'DF')
-    pdf.set_xy(15, pdf.get_y() + 2)
-    pdf.set_font("Arial", 'B', 11); pdf.set_text_color(31, 78, 120)
-    pdf.cell(0, 8, f"SOCIO / CLIENTE: {clean_text(socio_nombre)}", ln=True); pdf.ln(8)
+    pdf.set_font("Arial", 'B', 10)
+    pdf.set_text_color(30, 30, 30)
+    pdf.cell(0, 6, clean_text(titulo), ln=True, align='C')
+    pdf.set_font("Arial", '', 8)
+    pdf.set_text_color(120, 120, 120)
+    pdf.cell(0, 4, f"REF: {num_ref}", ln=True, align='C')
+    pdf.cell(0, 4, f"FECHA: {format_datetime(get_guayaquil_time())}", ln=True, align='C')
+    pdf.ln(3)
+    
+    pdf.set_font("Arial", 'B', 8)
+    pdf.set_text_color(18, 43, 77)
+    pdf.cell(0, 5, "DATOS DEL SOCIO:", ln=True)
+    pdf.set_font("Arial", '', 8)
+    pdf.set_text_color(50, 50, 50)
+    pdf.multi_cell(0, 4, clean_text(socio_nombre))
+    pdf.ln(2)
+    
+    pdf.set_draw_color(200, 200, 200)
+    pdf.line(5, pdf.get_y(), 75, pdf.get_y())
+    pdf.ln(3)
+    
     for key, val in detalles.items():
-        pdf.set_font("Arial", 'B', 10); pdf.set_text_color(80, 80, 80)
-        pdf.cell(60, 10, f"{key}:", border=0)
-        if "TOTAL" in key or "ESTADO" in key or "PENDIENTE" in key:
-            pdf.set_font("Arial", 'B', 11); pdf.set_text_color(31, 78, 120)
+        pdf.set_font("Arial", 'B', 8)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 4, f"{key}:", ln=True)
+        
+        if "TOTAL" in key or "ESTADO" in key or "MONTO" in key:
+            pdf.set_font("Arial", 'B', 12)
+            pdf.set_text_color(18, 43, 77)
         else:
-            pdf.set_font("Arial", '', 11); pdf.set_text_color(51, 51, 51)
-        pdf.cell(0, 10, str(val), border=0, ln=True)
+            pdf.set_font("Arial", '', 9)
+            pdf.set_text_color(30, 30, 30)
+            
+        pdf.cell(0, 5, str(val), ln=True, align='R')
+        pdf.ln(2)
+        
     try: return pdf.output(dest='S').encode('latin1')
     except: return bytes(pdf.output())
 
@@ -177,19 +199,19 @@ if not st.session_state['logged_in']:
         
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
-            padding: 30px 25px 20px 25px !important;
+            padding: 25px 25px 20px 25px !important;
             border-radius: 15px !important;
             box-shadow: 0px 10px 40px rgba(0,0,0,0.7) !important;
             border: none !important;
         }
         
-        div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] div {
+        div[data-testid="stForm"] p, div[data-testid="stForm"] label {
             color: #091D3E !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
         
         div[data-testid="stForm"] .stTextInput {
-            margin-bottom: -10px !important;
+            margin-bottom: -15px !important;
         }
         
         input {
@@ -201,33 +223,34 @@ if not st.session_state['logged_in']:
             font-size: 14px !important;
         }
 
-        /* CORRECCIÓN ABSOLUTA DEL BOTÓN DE INICIO DE SESIÓN */
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
+        /* INSTRUCCIÓN NUCLEAR PARA EL BOTÓN DE INICIO DE SESIÓN */
+        div[data-testid="stFormSubmitButton"] > button {
             background-color: #122B4D !important;
+            color: #FFFFFF !important;
+            width: 100% !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            height: 42px !important;
+            border-radius: 8px !important;
             border: none !important;
-            border-radius: 6px !important;
-            padding: 8px 0px !important;
-            width: 100% !important; /* Toma todo el ancho del formulario */
             margin-top: 15px !important;
-            min-height: 42px !important;
-            display: block !important;
         }
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
+        div[data-testid="stFormSubmitButton"] > button:hover {
             background-color: #1C447A !important;
         }
-        
-        /* OBLIGAMOS A QUE EL TEXTO SEA BLANCO, PEQUEÑO Y EN UNA SOLA LÍNEA */
-        div[data-testid="stForm"] button[kind="primaryFormSubmit"] p {
+        div[data-testid="stFormSubmitButton"] > button > div,
+        div[data-testid="stFormSubmitButton"] > button p {
             color: #FFFFFF !important;
-            font-weight: 600 !important;
-            font-size: 15px !important;
-            white-space: nowrap !important;
+            font-size: 16px !important;
+            font-weight: bold !important;
             margin: 0 !important;
             padding: 0 !important;
+            white-space: nowrap !important;
         }
         
-        /* Botón secundario de olvido de contraseña */
-        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
+        /* Botón secundario (Olvido de contraseña) */
+        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
             background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
@@ -236,11 +259,11 @@ if not st.session_state['logged_in']:
             margin-top: 5px !important;
             min-height: 20px !important;
         }
-        div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover p {
+        button[kind="secondaryFormSubmit"]:hover p {
             text-decoration: underline !important;
             color: #122B4D !important;
         }
-        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] p {
+        button[kind="secondaryFormSubmit"] p {
             color: #1A5632 !important;
             font-size: 13px !important;
             white-space: nowrap !important;
@@ -253,8 +276,7 @@ if not st.session_state['logged_in']:
     </style>
     """, unsafe_allow_html=True)
 
-    # Contenedor centrado y proporcionado para no aplastar los botones
-    col1, col2, col3 = st.columns([1.3, 1, 1.3])
+    col1, col2, col3 = st.columns([1.5, 1, 1.5])
     
     with col2:
         if st.session_state.get('show_reset', False):
@@ -275,17 +297,14 @@ if not st.session_state['logged_in']:
                 if btn_save:
                     c_ced = clean_text(ced_input)
                     c_pwd = clean_text(pwd_new)
-                    
                     if c_ced and c_pwd:
                         user_data = fetch_data("SELECT id FROM usuarios WHERE username=%s AND rol='SOCIO'", (c_ced,))
                         if user_data:
                             run_query("UPDATE usuarios SET password=%s WHERE id=%s", (c_pwd, user_data[0][0]))
                             registrar_bitacora("RECUPERACION CLAVE", f"El socio CI {c_ced} actualizó su contraseña.")
                             st.success("✅ ¡Clave actualizada!")
-                        else:
-                            st.error("❌ La cédula no existe o no es Socio.")
-                    else:
-                        st.warning("⚠️ Llene ambos campos.")
+                        else: st.error("❌ La cédula no existe o no es Socio.")
+                    else: st.warning("⚠️ Llene ambos campos.")
 
         else:
             with st.form("login_form"):
@@ -314,26 +333,17 @@ if not st.session_state['logged_in']:
                         u_rol = usuario_db[0][1]
                         u_socio_id = usuario_db[0][2]
                         d_name = user_clean
-                        
                         if u_rol == 'SOCIO' and u_socio_id:
                             s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (u_socio_id,))
                             if s_data:
                                 nombres_partes = str(s_data[0][0]).split()
                                 d_name = " ".join(nombres_partes[:2]).title()
-                        else:
-                            d_name = "Administrador"
+                        else: d_name = "Administrador"
 
-                        st.session_state.update({
-                            'logged_in': True, 
-                            'username': user_clean, 
-                            'rol': u_rol, 
-                            'socio_id': u_socio_id,
-                            'display_name': d_name
-                        })
+                        st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': u_rol, 'socio_id': u_socio_id, 'display_name': d_name})
                         registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {u_rol}")
                         st.rerun()
-                    else: 
-                        st.error("Credenciales incorrectas.")
+                    else: st.error("Credenciales incorrectas.")
                 
         st.markdown("""
         <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
@@ -349,9 +359,7 @@ if not st.session_state['logged_in']:
 # ==========================================
 st.markdown("""
 <style>
-    html, body, [class*="css"] {
-        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
-    }
+    html, body, [class*="css"] { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important; }
     .stApp { background: #F0F4F8 !important; overflow: auto !important; }
     h1 { color: #091D3E !important; font-size: 26px !important; font-weight: 700 !important; margin-bottom: 20px !important;}
     h2 { color: #122B4D !important; font-size: 20px !important; font-weight: 600 !important; margin-bottom: 15px !important;}
@@ -382,17 +390,8 @@ st.markdown("""
         box-shadow: 0px 4px 10px rgba(0,0,0,0.15) !important;
     }
 
-    [data-testid="stSidebar"] { 
-        background-color: #F8F5EE !important; 
-        border-right: 1px solid #D6D2C4 !important; 
-    }
-    [data-testid="stSidebar"] img { 
-        max-width: 180px !important; 
-        margin: 0 auto !important; 
-        display: block; 
-        background-color: transparent !important; 
-        padding-bottom: 15px; 
-    }
+    [data-testid="stSidebar"] { background-color: #F8F5EE !important; border-right: 1px solid #D6D2C4 !important; }
+    [data-testid="stSidebar"] img { max-width: 180px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 15px; }
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
 
@@ -460,11 +459,23 @@ def obtener_limites_prestamo():
     base_calculo = t_dep + t_ing_ex + t_int_gan
     limite_70 = base_calculo * 0.70
     disponible = limite_70 - cap_calle
-    
     return max(0.0, disponible), limite_70, cap_calle, base_calculo
 
+class ResumenPDF(FPDF):
+    def header(self):
+        if os.path.exists('logo_banco.png'):
+            self.image('logo_banco.png', 10, 8, w=28)
+        self.set_y(15)
+        self.set_font('Arial', 'B', 20)
+        self.set_text_color(31, 78, 120)
+        self.cell(0, 10, clean_text("Banco de la Familia Guzman"), ln=True, align='C')
+        self.set_draw_color(31, 78, 120)
+        self.set_line_width(0.8)
+        self.line(10, 42, 200, 42)
+        self.set_y(47)
+
 if st.session_state['rol'] == 'Administrador':
-    menu = st.sidebar.radio("NAVEGACIÓN", ["🏢 INICIO Y DASHBOARD", "👥 SOCIOS", "💵 DEPÓSITOS Y RETIROS", "🤝 CRÉDITOS", "📊 INGRESOS Y EGRESOS", "⚙️ CONFIGURACIÓN", "📖 AUDITORÍA"])
+    menu = st.sidebar.radio("NAVEGACIÓN", ["🏢 INICIO Y DASHBOARD", "👥 SOCIOS", "💵 DEPÓSITOS Y RETIROS", "🤝 CRÉDITOS", "📊 INGRESOS Y EGRESOS", "🖨️ REIMPRESIÓN", "⚙️ CONFIGURACIÓN", "📖 AUDITORÍA"])
     if st.sidebar.button("CERRAR SESIÓN"):
         registrar_bitacora("CIERRE DE SESION", "El usuario salió del sistema")
         st.session_state.clear(); st.rerun()
@@ -500,7 +511,7 @@ if st.session_state['rol'] == 'Administrador':
         
         st.write("---")
         def crear_pdf_resumen():
-            pdf = BancoPDF()
+            pdf = ResumenPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
             pdf.cell(0, 10, clean_text("Resumen Financiero Consolidado"), ln=True, align='C')
@@ -542,7 +553,7 @@ if st.session_state['rol'] == 'Administrador':
                 st.download_button("📊 EXPORTAR BASE EN EXCEL", data=output.getvalue(), file_name="REPORTE_SOCIOS.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
             with col_pdf:
                 def crear_pdf_socios():
-                    pdf = BancoPDF()
+                    pdf = ResumenPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
                     pdf.cell(0, 10, clean_text("Reporte Oficial de Socios"), ln=True, align='C')
@@ -618,7 +629,7 @@ if st.session_state['rol'] == 'Administrador':
                         "🔍 BUSCAR Y SELECCIONAR SOCIO", 
                         socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
                         index=None,
-                        placeholder="✍️ Clic aquí para escribir el nombre..."
+                        placeholder="✍️ Clic aquí para escribir el nombre o cédula..."
                     )
                     tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
                 with col_tx2: 
@@ -633,12 +644,12 @@ if st.session_state['rol'] == 'Administrador':
                         s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
                         tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
                         registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
-                        pdf_bytes = generar_comprobante("COMPROBANTE DE TRANSACCION", f"TX-{tx_id}", nombre_socio, {"TIPO DE MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
-                        st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
+                        pdf_bytes = generar_voucher("VOUCHER DE CAJA", f"TX-{tx_id}", nombre_socio, {"MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
+                        st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Voucher_{clean_text(tipo)}_{s_id}.pdf"
                         st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
             
             if 'ultimo_recibo_tx' in st.session_state: 
-                st.download_button("📥 DESCARGAR COMPROBANTE EN PDF", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf")
+                st.download_button("📲 DESCARGAR VOUCHER DIGITAL PARA WHATSAPP", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf", type="primary")
 
     elif menu == "🤝 CRÉDITOS":
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
@@ -682,7 +693,7 @@ if st.session_state['rol'] == 'Administrador':
                         socio_cred = st.selectbox(
                             "SOCIO BENEFICIARIO", 
                             socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
-                            index=None, placeholder="✍️ Buscar socio..."
+                            index=None, placeholder="✍️ Buscar socio por nombre o cédula..."
                         )
                         capital = st.number_input("CAPITAL A PRESTAR ($)", min_value=1.0, step=100.0)
                     with col_cr2: 
@@ -737,11 +748,11 @@ if st.session_state['rol'] == 'Administrador':
                         nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
                         if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
                         else: st.success("PAGO APLICADO CORRECTAMENTE.")
-                        pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
-                        st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
+                        pdf_bytes = generar_voucher("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO CAPITAL": f"${pago_cap:,.2f}", "PAGO INTERES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE": f"${nuevo_saldo:,.2f}"})
+                        st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.pdf"
                 
             if 'ultimo_recibo_pago' in st.session_state: 
-                st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
+                st.download_button("📲 DESCARGAR VOUCHER DIGITAL PARA WHATSAPP", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf", type="primary")
         
         with tab_reporte:
             st.write("### REPORTE OFICIAL DE CRÉDITOS VIGENTES")
@@ -774,57 +785,75 @@ if st.session_state['rol'] == 'Administrador':
                 col_t3.metric("GRAN TOTAL ESPERADO", f"${(total_cap + total_int):,.2f}")
                 
                 def crear_pdf_reporte_creditos():
-                    pdf = BancoPDF()
+                    pdf = ResumenPDF()
                     pdf.add_page()
-                    pdf.set_font("Arial", 'B', 14)
-                    pdf.set_text_color(80, 80, 80)
+                    pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
                     pdf.cell(0, 10, clean_text("Reporte de Creditos Activos (En la Calle)"), ln=True, align='C')
-                    pdf.set_font("Arial", '', 10)
-                    pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C')
-                    pdf.ln(5)
-                    
-                    pdf.set_fill_color(31, 78, 120)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_draw_color(31, 78, 120)
-                    pdf.set_font("Arial", 'B', 9)
+                    pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(5)
+                    pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_draw_color(31, 78, 120); pdf.set_font("Arial", 'B', 9)
                     anchos = [55, 25, 20, 30, 30, 30]
                     cabs = ["SOCIO", "FECHA", "MESES", "CAPITAL", "INTERES", "TOTAL"]
-                    for i, h in enumerate(cabs):
-                        pdf.cell(anchos[i], 10, h, border=1, fill=True, align='C')
+                    for i, h in enumerate(cabs): pdf.cell(anchos[i], 10, h, border=1, fill=True, align='C')
                     pdf.ln()
-                    
                     pdf.set_draw_color(226, 232, 240)
                     fill = False
                     for d in reporte_data:
                         if fill: pdf.set_fill_color(244, 248, 251)
                         else: pdf.set_fill_color(255, 255, 255)
-                        pdf.set_text_color(51, 51, 51)
-                        pdf.set_font("Arial", '', 8)
+                        pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", '', 8)
                         pdf.cell(anchos[0], 10, str(d['SOCIO'])[:28], border=1, fill=True)
                         pdf.cell(anchos[1], 10, str(d['FECHA OTORG.']), border=1, fill=True, align='C')
                         pdf.cell(anchos[2], 10, str(d['MESES']), border=1, fill=True, align='C')
                         pdf.cell(anchos[3], 10, f"${d['CAPITAL VIGENTE']:,.2f}", border=1, fill=True, align='R')
                         pdf.cell(anchos[4], 10, f"${d['INTERÉS GENERADO']:,.2f}", border=1, fill=True, align='R')
-                        pdf.set_font("Arial", 'B', 8)
-                        pdf.cell(anchos[5], 10, f"${d['TOTAL ESPERADO']:,.2f}", border=1, fill=True, align='R')
-                        pdf.ln()
-                        fill = not fill
-                    
-                    pdf.ln(5)
-                    pdf.set_fill_color(31, 78, 120)
-                    pdf.set_text_color(255, 255, 255)
-                    pdf.set_font("Arial", 'B', 10)
+                        pdf.set_font("Arial", 'B', 8); pdf.cell(anchos[5], 10, f"${d['TOTAL ESPERADO']:,.2f}", border=1, fill=True, align='R')
+                        pdf.ln(); fill = not fill
+                    pdf.ln(5); pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 10)
                     pdf.cell(100, 10, "TOTALES GENERALES:", border=0, fill=True, align='R')
                     pdf.cell(30, 10, f"${total_cap:,.2f}", border=0, fill=True, align='R')
                     pdf.cell(30, 10, f"${total_int:,.2f}", border=0, fill=True, align='R')
                     pdf.cell(30, 10, f"${(total_cap+total_int):,.2f}", border=0, fill=True, align='R')
-                    
                     try: return pdf.output(dest='S').encode('latin1')
                     except: return bytes(pdf.output())
                     
                 st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
             else:
                 st.info("No hay créditos vigentes en este momento.")
+
+    elif menu == "🖨️ REIMPRESIÓN":
+        st.header("MÓDULO DE REIMPRESIÓN DE COMPROBANTES")
+        tab_tx, tab_pagos = st.tabs(["REIMPRIMIR DEPÓSITOS/RETIROS", "REIMPRIMIR PAGOS DE CRÉDITO"])
+        
+        with tab_tx:
+            st.info("Busque por nombre de socio o tipo de transacción para reimprimir el voucher.")
+            query_tx = '''SELECT t.id, t.tipo, t.monto, t.fecha, s.nombres, s.apellidos FROM transacciones t JOIN socios s ON t.socio_id = s.id ORDER BY t.id DESC'''
+            df_tx = get_dataframe(query_tx)
+            if not df_tx.empty:
+                opciones_tx = df_tx['id'].astype(str) + " - " + df_tx['nombres'] + " " + df_tx['apellidos'] + " | " + df_tx['tipo'] + " de $" + df_tx['monto'].astype(str) + " (" + df_tx['fecha'] + ")"
+                tx_sel_str = st.selectbox("BUSCAR TRANSACCIÓN", opciones_tx, index=None, placeholder="✍️ Escriba el nombre del socio...")
+                if tx_sel_str:
+                    tx_id = int(tx_sel_str.split(" - ")[0])
+                    tx_data = df_tx[df_tx['id'] == tx_id].iloc[0]
+                    nombre_socio_tx = f"{tx_data['nombres']} {tx_data['apellidos']}"
+                    voucher_tx = generar_voucher("VOUCHER DE CAJA", f"TX-{tx_id} (COPIA)", nombre_socio_tx, {"MOVIMIENTO": clean_text(tx_data['tipo']), "MONTO PROCESADO": f"${tx_data['monto']:,.2f}", "FECHA ORIGINAL": tx_data['fecha'], "ESTADO": "COMPLETADO"})
+                    st.download_button("📲 REIMPRIMIR VOUCHER DIGITAL", data=voucher_tx, file_name=f"Copia_Voucher_TX_{tx_id}.pdf", mime="application/pdf", type="primary")
+            else: st.warning("No hay transacciones registradas.")
+
+        with tab_pagos:
+            st.info("Busque por nombre de socio para reimprimir un recibo de pago de crédito.")
+            query_pg = '''SELECT p.id as p_id, p.pago_capital, p.pago_interes, p.fecha, s.nombres, s.apellidos, pr.id as pr_id FROM pagos p JOIN prestamos pr ON p.prestamo_id = pr.id JOIN socios s ON pr.socio_id = s.id ORDER BY p.id DESC'''
+            df_pg = get_dataframe(query_pg)
+            if not df_pg.empty:
+                opciones_pg = df_pg['p_id'].astype(str) + " - " + df_pg['nombres'] + " " + df_pg['apellidos'] + " | Pago Total: $" + (df_pg['pago_capital'] + df_pg['pago_interes']).astype(str) + " (" + df_pg['fecha'] + ")"
+                pg_sel_str = st.selectbox("BUSCAR PAGO", opciones_pg, index=None, placeholder="✍️ Escriba el nombre del socio...")
+                if pg_sel_str:
+                    pg_id = int(pg_sel_str.split(" - ")[0])
+                    pg_data = df_pg[df_pg['p_id'] == pg_id].iloc[0]
+                    nombre_socio_pg = f"{pg_data['nombres']} {pg_data['apellidos']}"
+                    saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
+                    voucher_pg = generar_voucher("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO CAPITAL": f"${pg_data['pago_capital']:,.2f}", "PAGO INTERES": f"${pg_data['pago_interes']:,.2f}", "TOTAL CANCELADO": f"${(pg_data['pago_capital'] + pg_data['pago_interes']):,.2f}", "SALDO PENDIENTE ACTUAL": f"${saldo_actual:,.2f}"})
+                    st.download_button("📲 REIMPRIMIR VOUCHER DE PAGO", data=voucher_pg, file_name=f"Copia_Voucher_Pago_{pg_id}.pdf", mime="application/pdf", type="primary")
+            else: st.warning("No hay pagos registrados.")
 
     elif menu == "📊 INGRESOS Y EGRESOS":
         st.header("GESTIÓN DE CAJA CHICA Y EXTRAORDINARIOS")
