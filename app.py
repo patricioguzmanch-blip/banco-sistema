@@ -11,7 +11,6 @@ import plotly.express as px
 import psycopg2
 import warnings
 
-# Ocultar advertencias de Pandas
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
@@ -160,41 +159,41 @@ if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None})
 
 # ==========================================
-# NUEVO DISEÑO DE PANTALLA DE LOGIN
+# DISEÑO COMPACTO Y SIMÉTRICO DE LOGIN
 # ==========================================
 if not st.session_state['logged_in']:
     st.markdown("""
     <style>
-        /* Fondo azul profundo como en la imagen */
         .stApp {
             background: linear-gradient(135deg, #091D3E 0%, #030B18 100%) !important;
         }
         header { display: none !important; }
         
-        /* Contenedor central (tarjeta crema) */
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
-            padding: 40px 30px !important;
-            border-radius: 20px !important;
-            box-shadow: 0px 15px 40px rgba(0,0,0,0.6) !important;
+            padding: 25px 20px 15px 20px !important;
+            border-radius: 15px !important;
+            box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
             border: none !important;
         }
         
-        /* Textos dentro del cuadro crema */
         div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] div {
             color: #091D3E !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
         
-        /* Botón Iniciar Sesión */
+        div[data-testid="stForm"] .stTextInput {
+            margin-bottom: -10px !important;
+        }
+        
         div.stButton > button:first-child {
             background-color: #122B4D !important;
             color: #FFFFFF !important;
             border: none !important;
-            border-radius: 8px !important;
-            padding: 12px 0px !important;
+            border-radius: 6px !important;
+            padding: 6px 0px !important;
             font-weight: bold !important;
-            font-size: 16px !important;
+            font-size: 15px !important;
             width: 100% !important;
             margin-top: 5px !important;
         }
@@ -202,58 +201,46 @@ if not st.session_state['logged_in']:
             background-color: #1C447A !important;
         }
         
-        /* Estilos para los campos de texto */
         input {
             background-color: #FFFFFF !important;
             border: 1px solid #D6D2C4 !important;
-            border-radius: 8px !important;
+            border-radius: 6px !important;
             color: #091D3E !important;
             padding-left: 10px !important;
+            font-size: 14px !important;
         }
     </style>
     """, unsafe_allow_html=True)
 
-    # Columnas para centrar la tarjeta en la pantalla
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([1.5, 1, 1.5])
     
     with col2:
-        st.write("<br><br>", unsafe_allow_html=True)
-        
         with st.form("login_form"):
             
-            # Espacio dinámico para el Logo
             if os.path.exists("logo_banco.png"):
-                col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+                col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
                 with col_l2: st.image("logo_banco.png", use_container_width=True)
             else:
-                st.markdown("<h2 style='text-align: center; color: #091D3E !important;'>🏦 Banco Familiar</h2>", unsafe_allow_html=True)
+                st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h3>", unsafe_allow_html=True)
             
-            st.write("<br>", unsafe_allow_html=True)
-            
-            # Campos de texto con iconos
             user_input = st.text_input("👤 Nombre de Usuario")
             pwd_input = st.text_input("🔒 Contraseña", type="password")
             
-            # Checkbox visual
             st.checkbox("Recordarme")
-            
-            st.write("")
             submit_btn = st.form_submit_button("Iniciar Sesión")
             
-            # Elementos decorativos inferiores (Similares a la imagen)
             st.markdown("""
-            <div style='text-align: center; margin-top: 15px;'>
-                <p style='color: #1A5632 !important; font-size: 13px; margin-bottom: 5px;'>¿Olvidó su contraseña?</p>
-                <p style='font-size: 13px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
-                <hr style='border: 0.5px solid #E0DCD0; margin: 15px 0;'>
-                <p style='font-size: 13px; margin-bottom: 0;'>
-                    <span style='font-size: 18px;'>📞</span> Servicio al Cliente:<br>
+            <div style='text-align: center; margin-top: 10px; line-height: 1.3;'>
+                <p style='color: #1A5632 !important; font-size: 12px; margin-bottom: 2px;'>¿Olvidó su contraseña?</p>
+                <p style='font-size: 12px; margin-bottom: 5px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
+                <hr style='border: 0.5px solid #E0DCD0; margin: 10px 0;'>
+                <p style='font-size: 11px; margin-bottom: 0;'>
+                    <span style='font-size: 14px;'>📞</span> Servicio al Cliente:<br>
                     <b>1800-GUZMAN</b>
                 </p>
             </div>
             """, unsafe_allow_html=True)
             
-            # Proceso de validación al presionar el botón
             if submit_btn:
                 user_clean = clean_text(user_input)
                 pwd_clean = clean_text(pwd_input)
@@ -265,12 +252,10 @@ if not st.session_state['logged_in']:
                 else: 
                     st.error("Credenciales incorrectas.")
                 
-        # Pie de página y créditos del desarrollador adaptados al fondo oscuro
         st.markdown("""
-        <div style='text-align: center; margin-top: 20px; color: #7388A3; font-size: 13px; font-family: sans-serif;'>
+        <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
             © 2026 Banco de la Familia Guzmán.<br>
-            Desarrollado por <b>Patricio Guzmán</b><br>
-            Todos los derechos reservados.
+            Desarrollado por <b>Patricio Guzmán</b>
         </div>
         """, unsafe_allow_html=True)
         
