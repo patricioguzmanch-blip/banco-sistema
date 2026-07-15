@@ -218,7 +218,8 @@ if not st.session_state['logged_in']:
         with st.form("login_form"):
             
             if os.path.exists("logo_banco.png"):
-                col_l1, col_l2, col_l3 = st.columns([1, 1.2, 1])
+                # Se ajustan proporciones (1, 1.8, 1) para dar mucho más espacio nativo al logotipo
+                col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
                 with col_l2: st.image("logo_banco.png", use_container_width=True)
             else:
                 st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h3>", unsafe_allow_html=True)
@@ -272,7 +273,9 @@ st.markdown("""
     div.stButton > button:first-child { background-color: #1F4E78; color: white; border: none; font-weight: 600; }
     div.stButton > button:first-child:hover { background-color: #153654; color: white; }
     [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
-    [data-testid="stSidebar"] img { max-width: 130px !important; margin: 0 auto !important; display: block; background-color: transparent !important; }
+    
+    /* Logotipo más grande en el menú lateral. Max-width ampliado a 200px */
+    [data-testid="stSidebar"] img { max-width: 200px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 15px; }
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
 </style>
