@@ -15,23 +15,6 @@ from PIL import Image, ImageDraw, ImageFont
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
-# CONFIGURACIÓN DE PÁGINA Y SESIÓN (DEBE IR PRIMERO)
-# ==========================================
-st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
-
-if 'logged_in' not in st.session_state:
-    st.session_state.update({
-        'logged_in': False, 
-        'username': None, 
-        'rol': None, 
-        'socio_id': None, 
-        'display_name': None
-    })
-
-if 'db_initialized' not in st.session_state:
-    st.session_state['db_initialized'] = False
-
-# ==========================================
 # 0. FUNCIONES DE UTILIDAD
 # ==========================================
 def get_guayaquil_time():
@@ -72,14 +55,6 @@ def init_db():
         c.execute("INSERT INTO usuarios (username, password, rol) VALUES ('ADMIN', 'ADMIN', 'Administrador')")
     conn.commit()
     conn.close()
-
-if not st.session_state['db_initialized']:
-    try:
-        init_db()
-        st.session_state['db_initialized'] = True
-    except Exception as e:
-        st.error(f"Falla de conexión con la base de datos Neon. Verifica tus Secrets: {e}")
-        st.stop()
 
 def run_query(query, params=(), returning=False):
     conn = get_db_connection()
@@ -122,69 +97,49 @@ def registrar_bitacora(accion, detalle):
     fecha_hora = format_datetime(get_guayaquil_time())
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
-def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
-    fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
-    d_cobro = fecha_cobro_dt.date() if hasattr(fecha_cobro_dt, 'date') else fecha_cobro_dt
-    d_otorg = fecha_otorg_dt.date() if hasattr(fecha_otorg_dt, 'date') else fecha_otorg_dt
-    dias_transcurridos = (d_cobro - d_otorg).days
-    if dias_transcurridos < 0: dias_transcurridos = 0
-    meses_calendario = (d_cobro.year - d_otorg.year) * 12 + d_cobro.month - d_otorg.month
-    if d_cobro.day < d_otorg.day: meses_calendario -= 1
-    meses_calendario = max(0, meses_calendario)
-    meses_a_cobrar = 0
-    if tipo_credito == "ESPECIAL (0% INTERES)": meses_a_cobrar = 0
-    elif tipo_credito == "CORTO PLAZO (5 DIAS)":
-        if dias_transcurridos <= 5: meses_a_cobrar = 0
-        else: meses_a_cobrar = max(1, meses_calendario)
-    else: meses_a_cobrar = max(1, meses_calendario)
-    interes_total_generado = capital_original * 0.10 * meses_a_cobrar
-    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
-    return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
-
-def obtener_limites_prestamo():
-    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
-    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
-    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
-    
-    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
-    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-    cap_calle = cap_pres - cap_dev
-    
-    base_calculo = t_dep + t_ing_ex + t_int_gan
-    limite_70 = base_calculo * 0.70
-    disponible = limite_70 - cap_calle
-    return max(0.0, disponible), limite_70, cap_calle, base_calculo
+# ==========================================
+# CREADOR INTELIGENTE DE FUENTES PARA LA NUBE
+# ==========================================
+def load_font(size, bold=False):
+    # Busca fuentes instaladas en los servidores Linux de Streamlit Cloud
+    font_paths = [
+        "arialbd.ttf" if bold else "arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/dejavu/DejaVuSans.ttf"
+    ]
+    for path in font_paths:
+        try:
+            return ImageFont.truetype(path, size)
+        except:
+            pass
+    return ImageFont.load_default()
 
 # ==========================================
-# 2. MOTORES DE COMPROBANTES Y PDF
+# 2. MOTORES DE COMPROBANTES TIPO IMAGEN (PNG)
 # ==========================================
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
-    alto = 380 + (len(detalles) * 45)
+    # Lienzo ampliado a 700px para acomodar texto grande
+    alto = 450 + (len(detalles) * 60)
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((140, 140))
-            logo_height = logo_img.height + 20
+            logo_img.thumbnail((160, 160))
+            logo_height = logo_img.height + 25
             alto += logo_height
         except: pass
             
-    img = Image.new('RGB', (600, alto), color='#F8F5EE')
+    img = Image.new('RGB', (700, alto), color='#F8F5EE')
     d = ImageDraw.Draw(img)
     
-    try:
-        f_title = ImageFont.truetype("arialbd.ttf", 26)
-        f_sub = ImageFont.truetype("arial.ttf", 18)
-        f_bold = ImageFont.truetype("arialbd.ttf", 22)
-        f_text = ImageFont.truetype("arial.ttf", 20)
-        f_small = ImageFont.truetype("arial.ttf", 14)
-    except:
-        f_title = ImageFont.load_default()
-        f_sub = ImageFont.load_default()
-        f_bold = ImageFont.load_default()
-        f_text = ImageFont.load_default()
-        f_small = ImageFont.load_default()
+    # Textos considerablemente más grandes
+    f_title = load_font(34, True)
+    f_sub = load_font(24, False)
+    f_bold = load_font(28, True)
+    f_text = load_font(26, False)
+    f_small = load_font(18, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
@@ -192,36 +147,36 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
-        x = (600 - w) / 2
+        x = (700 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
-    y_pos = 30
+    y_pos = 40
     if logo_img:
-        logo_x = int((600 - logo_img.width) / 2)
+        logo_x = int((700 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
         y_pos += logo_height
         
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    y_pos += 45
+    y_pos += 55
     draw_centered(y_pos, titulo, f_bold, '#122B4D')
-    y_pos += 40
+    y_pos += 45
     draw_centered(y_pos, f"REF: {num_ref}", f_small, '#555555')
-    y_pos += 25
+    y_pos += 30
     draw_centered(y_pos, f"FECHA: {format_datetime(get_guayaquil_time())}", f_small, '#555555')
     
-    y_pos += 30
-    d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
+    y_pos += 40
+    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
     
-    y_pos += 20
+    y_pos += 30
     d.text((50, y_pos), "DATOS DEL ASOCIADO:", font=f_bold, fill='#091D3E')
     n_corto = socio_nombre[:35] + "..." if len(socio_nombre) > 35 else socio_nombre
-    y_pos += 35
+    y_pos += 45
     d.text((50, y_pos), n_corto, font=f_text, fill='#333333')
     
-    y_pos += 40
-    d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
+    y_pos += 55
+    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
     
-    y_pos += 25
+    y_pos += 35
     for key, val in detalles.items():
         is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key or "SALDO" in key
         f_k = f_bold if is_total else f_sub
@@ -230,47 +185,42 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
         
         d.text((50, y_pos), f"{key}:", font=f_k, fill='#555555')
         w_val = get_text_width(str(val), f_v)
-        d.text((550 - w_val, y_pos), str(val), font=f_v, fill=color)
-        y_pos += 45
+        d.text((650 - w_val, y_pos), str(val), font=f_v, fill=color)
+        y_pos += 55
     
-    y_pos += 15
-    d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
-    draw_centered(y_pos + 25, "Gracias por su confianza", f_small, '#777777')
-    draw_centered(y_pos + 50, "Documento valido como comprobante", f_small, '#777777')
+    y_pos += 20
+    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
+    draw_centered(y_pos + 35, "Gracias por su confianza", f_small, '#777777')
+    draw_centered(y_pos + 65, "Documento valido como comprobante", f_small, '#777777')
     
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
 
 def generar_imagen_dashboard(detalles):
-    alto_filas = len(detalles) * 55
-    alto_total = 260 + alto_filas + 80
+    # Lienzo ampliado a 800px para que entren las letras grandes cómodamente
+    alto_filas = len(detalles) * 70
+    alto_total = 320 + alto_filas + 100
     
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((140, 140))
-            logo_height = logo_img.height + 20
+            logo_img.thumbnail((160, 160))
+            logo_height = logo_img.height + 25
             alto_total += logo_height
         except: pass
 
-    img = Image.new('RGB', (650, alto_total), color='#F8F5EE')
+    img = Image.new('RGB', (800, alto_total), color='#F8F5EE')
     d = ImageDraw.Draw(img)
 
-    try:
-        f_title = ImageFont.truetype("arialbd.ttf", 28)
-        f_sub = ImageFont.truetype("arial.ttf", 20)
-        f_bold = ImageFont.truetype("arialbd.ttf", 22)
-        f_text = ImageFont.truetype("arial.ttf", 22)
-        f_small = ImageFont.truetype("arial.ttf", 16)
-    except:
-        f_title = ImageFont.load_default()
-        f_sub = ImageFont.load_default()
-        f_bold = ImageFont.load_default()
-        f_text = ImageFont.load_default()
-        f_small = ImageFont.load_default()
+    # Letras gigantes para el Dashboard
+    f_title = load_font(36, True)
+    f_sub = load_font(24, False)
+    f_bold = load_font(28, True)
+    f_text = load_font(26, False)
+    f_small = load_font(18, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
@@ -278,29 +228,30 @@ def generar_imagen_dashboard(detalles):
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
-        x = (650 - w) / 2
+        x = (800 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
     y_pos = 40
     if logo_img:
-        logo_x = int((650 - logo_img.width) / 2)
+        logo_x = int((800 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
         y_pos += logo_height
 
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    y_pos += 45
+    y_pos += 55
     draw_centered(y_pos, "RESUMEN FINANCIERO", f_bold, '#122B4D')
-    y_pos += 35
+    y_pos += 45
     draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
     
-    y_pos += 50
+    y_pos += 60
     
-    d.rectangle([40, y_pos, 610, y_pos + 45], fill='#122B4D')
-    d.text((60, y_pos + 10), "CONCEPTO", font=f_bold, fill='#FFFFFF')
+    # Cabecera de la tabla (Ancho de 40 a 760)
+    d.rectangle([40, y_pos, 760, y_pos + 55], fill='#122B4D')
+    d.text((60, y_pos + 15), "CONCEPTO", font=f_bold, fill='#FFFFFF')
     w_monto = get_text_width("MONTO", f_bold)
-    d.text((590 - w_monto, y_pos + 10), "MONTO", font=f_bold, fill='#FFFFFF')
+    d.text((740 - w_monto, y_pos + 15), "MONTO", font=f_bold, fill='#FFFFFF')
     
-    y_pos += 45
+    y_pos += 55
 
     for index, (key, val) in enumerate(detalles.items()):
         if key == "Disponible para prestamos":
@@ -319,14 +270,14 @@ def generar_imagen_dashboard(detalles):
             font_k = f_text
             font_v = f_text
 
-        d.rectangle([40, y_pos, 610, y_pos + 55], fill=bg_color, outline="#CCCCCC", width=1)
-        d.text((60, y_pos + 15), key, font=font_k, fill=text_color)
+        d.rectangle([40, y_pos, 760, y_pos + 65], fill=bg_color, outline="#CCCCCC", width=1)
+        d.text((60, y_pos + 18), key, font=font_k, fill=text_color)
         w_val = get_text_width(str(val), font_v)
-        d.text((590 - w_val, y_pos + 15), str(val), font=font_v, fill=text_color)
+        d.text((740 - w_val, y_pos + 18), str(val), font=font_v, fill=text_color)
         
-        y_pos += 55
+        y_pos += 65
 
-    y_pos += 30
+    y_pos += 40
     draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
     
     buf = io.BytesIO()
@@ -368,7 +319,7 @@ if not st.session_state['logged_in']:
             color: #091D3E !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
-        div[data-testid="stForm"] .stTextInput { margin-bottom: -10px !important; }
+        div[data-testid="stForm"] .stTextInput { margin-bottom: -15px !important; }
         
         input {
             background-color: #FFFFFF !important; border: 1px solid #D6D2C4 !important;
@@ -376,44 +327,28 @@ if not st.session_state['logged_in']:
             padding-left: 10px !important; font-size: 14px !important;
         }
 
-        /* DISEÑO ESPECÍFICO DE BOTONES DE LOGIN PARA EVITAR CAJAS AZULES RARAS */
-        div.stButton > button[kind="primaryFormSubmit"] {
-            background-color: #122B4D !important;
-            color: #FFFFFF !important;
-            width: 100% !important;
-            border-radius: 8px !important;
-            border: none !important;
-            padding: 8px !important;
-            margin-top: 15px !important;
+        /* INSTRUCCIÓN NUCLEAR PARA EL BOTÓN DE INICIO DE SESIÓN */
+        div[data-testid="stFormSubmitButton"] > button {
+            background-color: #122B4D !important; color: #FFFFFF !important;
+            width: 100% !important; display: flex !important; justify-content: center !important;
+            align-items: center !important; height: 42px !important; border-radius: 8px !important;
+            border: none !important; margin-top: 15px !important;
         }
-        div.stButton > button[kind="primaryFormSubmit"]:hover {
-            background-color: #1C447A !important;
-        }
-        div.stButton > button[kind="primaryFormSubmit"] p {
-            color: #FFFFFF !important;
-            font-weight: bold !important;
-            font-size: 15px !important;
-            white-space: nowrap !important;
-            text-align: center !important;
+        div[data-testid="stFormSubmitButton"] > button:hover { background-color: #1C447A !important; }
+        div[data-testid="stFormSubmitButton"] > button > div,
+        div[data-testid="stFormSubmitButton"] > button p {
+            color: #FFFFFF !important; font-size: 16px !important; font-weight: bold !important;
+            margin: 0 !important; padding: 0 !important; white-space: nowrap !important;
         }
         
-        /* Botón de Olvido de contraseña como texto limpio */
-        div.stButton > button[kind="secondaryFormSubmit"] {
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            width: 100% !important;
-            margin-top: 0px !important;
-            padding: 0 !important;
+        /* Botón secundario (Olvido de contraseña) */
+        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
+            background-color: transparent !important; border: none !important; box-shadow: none !important;
+            padding: 0px !important; width: 100% !important; margin-top: 5px !important; min-height: 20px !important;
         }
-        div.stButton > button[kind="secondaryFormSubmit"]:hover p {
-            text-decoration: underline !important;
-        }
-        div.stButton > button[kind="secondaryFormSubmit"] p {
-            color: #1A5632 !important;
-            font-size: 13px !important;
-            text-align: center !important;
-            white-space: nowrap !important;
+        button[kind="secondaryFormSubmit"]:hover p { text-decoration: underline !important; color: #122B4D !important; }
+        button[kind="secondaryFormSubmit"] p {
+            color: #1A5632 !important; font-size: 13px !important; white-space: nowrap !important;
         }
 
         @media (max-width: 768px) {
@@ -681,8 +616,7 @@ if st.session_state['rol'] == 'Administrador':
                         pdf.cell(anchos[3], 10, f"${row['SALDO CUENTA']:.2f}", border=1, fill=True, align='R')
                         pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", '', 9)
                         pdf.cell(anchos[4], 10, str(row['TIENE CREDITO']), border=1, fill=True, align='C')
-                        pdf.ln()
-                        fill = not fill
+                        pdf.ln(); fill = not fill
                     try: return pdf.output(dest='S').encode('latin1')
                     except: return bytes(pdf.output())
                 st.download_button("📄 GENERAR REPORTE EN PDF", data=crear_pdf_socios(), file_name="REPORTE_SOCIOS.pdf", mime="application/pdf")
@@ -712,7 +646,7 @@ if st.session_state['rol'] == 'Administrador':
                 with st.form("form_editar_socio"):
                     col_ed1, col_ed2 = st.columns(2)
                     with col_ed1: e_ced = st.text_input("CÉDULA", value=datos_actuales[0]); e_nom = st.text_input("NOMBRES", value=datos_actuales[1]); e_ape = st.text_input("APELLIDOS", value=datos_actuales[2])
-                    with col_ed2: e_tel = text_input("TELÉFONO", value=datos_actuales[3]); e_correo = st.text_input("CORREO", value=datos_actuales[4]); st.write("<br><br>", unsafe_allow_html=True); btn_editar = st.form_submit_button("GUARDAR CAMBIOS")
+                    with col_ed2: e_tel = st.text_input("TELÉFONO", value=datos_actuales[3]); e_correo = st.text_input("CORREO", value=datos_actuales[4]); st.write("<br><br>", unsafe_allow_html=True); btn_editar = st.form_submit_button("GUARDAR CAMBIOS")
                     if btn_editar:
                         run_query("UPDATE socios SET cedula=%s, nombres=%s, apellidos=%s, telefono=%s, correo=%s WHERE id=%s", (clean_text(e_ced), clean_text(e_nom), clean_text(e_ape), clean_text(e_tel), clean_text(e_correo), id_sel))
                         registrar_bitacora("EDITAR SOCIO", f"Actualizados datos del Socio ID: {id_sel}")
