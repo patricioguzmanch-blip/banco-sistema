@@ -251,10 +251,9 @@ def generar_imagen_dashboard(detalles):
     # Dibujar las filas de la tabla dinámicamente
     for index, (key, val) in enumerate(detalles.items()):
         
-        # Lógica de colores y fuentes para la fila de disponible y saldo
         if key == "Disponible para prestamos":
-            bg_color = "#1F4E78" # Azul profundo
-            text_color = "#FFFFFF" # Letras blancas
+            bg_color = "#1F4E78"
+            text_color = "#FFFFFF"
             font_k = f_bold
             font_v = f_bold
         elif "CAJA" in key:
@@ -268,13 +267,8 @@ def generar_imagen_dashboard(detalles):
             font_k = f_text
             font_v = f_text
 
-        # Dibujar celda de la fila
         d.rectangle([40, y_pos, 610, y_pos + 55], fill=bg_color, outline="#CCCCCC", width=1)
-        
-        # Texto del Concepto (Izquierda)
         d.text((60, y_pos + 15), key, font=font_k, fill=text_color)
-        
-        # Texto del Monto (Derecha)
         w_val = get_text_width(str(val), font_v)
         d.text((590 - w_val, y_pos + 15), str(val), font=font_v, fill=text_color)
         
@@ -287,6 +281,20 @@ def generar_imagen_dashboard(detalles):
     img.save(buf, format='PNG')
     return buf.getvalue()
 
+
+def obtener_limites_prestamo():
+    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
+    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
+    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
+    
+    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
+    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
+    cap_calle = cap_pres - cap_dev
+    
+    base_calculo = t_dep + t_ing_ex + t_int_gan
+    limite_70 = base_calculo * 0.70
+    disponible = limite_70 - cap_calle
+    return max(0.0, disponible), limite_70, cap_calle, base_calculo
 
 # ==========================================
 # INICIALIZACIÓN Y CONFIGURACIÓN PÁGINA
@@ -312,6 +320,8 @@ if not st.session_state['logged_in']:
     <style>
         .stApp { background: linear-gradient(135deg, #091D3E 0%, #030B18 100%) !important; }
         header { display: none !important; }
+        
+        /* Contenedor central ajustado para ser elegante y compacto */
         .block-container { padding-top: 5vh !important; padding-bottom: 0 !important; max-width: 100% !important; }
         
         div[data-testid="stForm"] {
@@ -334,28 +344,36 @@ if not st.session_state['logged_in']:
             padding-left: 10px !important; font-size: 14px !important;
         }
 
-        /* INSTRUCCIÓN NUCLEAR PARA EL BOTÓN DE INICIO DE SESIÓN */
-        div[data-testid="stFormSubmitButton"] > button {
-            background-color: #122B4D !important; color: #FFFFFF !important;
-            width: 100% !important; display: flex !important; justify-content: center !important;
-            align-items: center !important; height: 42px !important; border-radius: 8px !important;
-            border: none !important; margin-top: 15px !important;
+        /* ESTILO LIMPIO PARA BOTONES DE FORMULARIO (LOGIN) */
+        button[kind="primaryFormSubmit"] {
+            background-color: #122B4D !important;
+            color: #FFFFFF !important;
+            border-radius: 8px !important;
+            border: none !important;
+            transition: all 0.3s ease !important;
         }
-        div[data-testid="stFormSubmitButton"] > button:hover { background-color: #1C447A !important; }
-        div[data-testid="stFormSubmitButton"] > button > div,
-        div[data-testid="stFormSubmitButton"] > button p {
-            color: #FFFFFF !important; font-size: 16px !important; font-weight: bold !important;
-            margin: 0 !important; padding: 0 !important; white-space: nowrap !important;
+        button[kind="primaryFormSubmit"] p {
+            color: #FFFFFF !important;
+            font-size: 15px !important;
+            font-weight: bold !important;
         }
-        
-        /* Botón secundario (Olvido de contraseña) */
-        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
-            background-color: transparent !important; border: none !important; box-shadow: none !important;
-            padding: 0px !important; width: 100% !important; margin-top: 5px !important; min-height: 20px !important;
+        button[kind="primaryFormSubmit"]:hover {
+            background-color: #1C447A !important;
         }
-        button[kind="secondaryFormSubmit"]:hover p { text-decoration: underline !important; color: #122B4D !important; }
+
+        button[kind="secondaryFormSubmit"] {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            margin-top: -5px !important;
+        }
         button[kind="secondaryFormSubmit"] p {
-            color: #1A5632 !important; font-size: 13px !important; white-space: nowrap !important;
+            color: #1A5632 !important;
+            font-size: 13px !important;
+        }
+        button[kind="secondaryFormSubmit"]:hover p {
+            text-decoration: underline !important;
+            color: #122B4D !important;
         }
 
         @media (max-width: 768px) {
@@ -365,7 +383,7 @@ if not st.session_state['logged_in']:
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1.5, 1, 1.5])
+    col1, col2, col3 = st.columns([1.6, 1.2, 1.6])
     
     with col2:
         if st.session_state.get('show_reset', False):
@@ -376,8 +394,8 @@ if not st.session_state['logged_in']:
                 ced_input = st.text_input("👤 Número de Cédula")
                 pwd_new = st.text_input("🔒 Nueva Contraseña", type="password")
                 
-                btn_save = st.form_submit_button("Guardar Contraseña", type="primary")
-                btn_back = st.form_submit_button("⬅️ Volver al Inicio", type="secondary")
+                btn_save = st.form_submit_button("Guardar Contraseña", type="primary", use_container_width=True)
+                btn_back = st.form_submit_button("Volver al Inicio", type="secondary", use_container_width=True)
                 
                 if btn_back:
                     st.session_state['show_reset'] = False
@@ -407,8 +425,10 @@ if not st.session_state['logged_in']:
                 pwd_input = st.text_input("🔒 Contraseña", type="password")
                 
                 st.checkbox("Recordarme")
-                submit_btn = st.form_submit_button("Iniciar Sesión", type="primary")
-                forgot_btn = st.form_submit_button("¿Olvidó su contraseña?", type="secondary")
+                
+                # Botones configurados de forma nativa y elegante
+                submit_btn = st.form_submit_button("Iniciar Sesión", type="primary", use_container_width=True)
+                forgot_btn = st.form_submit_button("¿Olvidó su contraseña?", type="secondary", use_container_width=True)
                 
                 if forgot_btn:
                     st.session_state['show_reset'] = True
@@ -504,39 +524,6 @@ st.sidebar.markdown(f"""
 """, unsafe_allow_html=True)
 
 st.sidebar.divider()
-
-def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
-    fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
-    d_cobro = fecha_cobro_dt.date() if hasattr(fecha_cobro_dt, 'date') else fecha_cobro_dt
-    d_otorg = fecha_otorg_dt.date() if hasattr(fecha_otorg_dt, 'date') else fecha_otorg_dt
-    dias_transcurridos = (d_cobro - d_otorg).days
-    if dias_transcurridos < 0: dias_transcurridos = 0
-    meses_calendario = (d_cobro.year - d_otorg.year) * 12 + d_cobro.month - d_otorg.month
-    if d_cobro.day < d_otorg.day: meses_calendario -= 1
-    meses_calendario = max(0, meses_calendario)
-    meses_a_cobrar = 0
-    if tipo_credito == "ESPECIAL (0% INTERES)": meses_a_cobrar = 0
-    elif tipo_credito == "CORTO PLAZO (5 DIAS)":
-        if dias_transcurridos <= 5: meses_a_cobrar = 0
-        else: meses_a_cobrar = max(1, meses_calendario)
-    else: meses_a_cobrar = max(1, meses_calendario)
-    interes_total_generado = capital_original * 0.10 * meses_a_cobrar
-    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
-    return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
-
-def obtener_limites_prestamo():
-    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
-    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
-    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
-    
-    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
-    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-    cap_calle = cap_pres - cap_dev
-    
-    base_calculo = t_dep + t_ing_ex + t_int_gan
-    limite_70 = base_calculo * 0.70
-    disponible = limite_70 - cap_calle
-    return max(0.0, disponible), limite_70, cap_calle, base_calculo
 
 class ResumenPDF(FPDF):
     def header(self):
@@ -1052,18 +1039,25 @@ elif st.session_state['rol'] == 'SOCIO':
     elif menu == "🤝 MIS PRÉSTAMOS":
         st.header("MI CARTERA DE CRÉDITOS")
         tab_lista, tab_solicitar = st.tabs(["HISTORIAL", "NUEVA SOLICITUD"])
+        
         with tab_lista:
             df_mis_prestamos = get_dataframe('SELECT capital_original as "CAPITAL", saldo_capital as "PENDIENTE", tipo_credito as "TIPO", estado as "ESTADO", fecha_solicitud as "SOLICITADO", fecha_otorgamiento as "OTORGADO" FROM prestamos WHERE socio_id=%s', (mi_id,))
             if not df_mis_prestamos.empty: st.dataframe(df_mis_prestamos, use_container_width=True)
             else: st.info("Su historial de créditos está vacío.")
                 
         with tab_solicitar:
+            disponible, _, _, _ = obtener_limites_prestamo()
+            st.info(f"💰 Valor disponible actual para créditos en el banco: **${disponible:,.2f}**")
+            
             with st.form("form_solicitar"):
                 monto_solicitado = st.number_input("MONTO REQUERIDO ($)", min_value=10.0, step=10.0, value=None)
                 tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)"])
                 st.write(""); 
                 if st.form_submit_button("RADICAR SOLICITUD DE CRÉDITO"):
-                    if monto_solicitado is None: st.error("⚠️ Por favor, ingrese un monto válido.")
+                    if monto_solicitado is None: 
+                        st.error("⚠️ Por favor, ingrese un monto válido.")
+                    elif monto_solicitado > disponible:
+                        st.error(f"❌ El monto solicitado (${monto_solicitado:,.2f}) supera el valor disponible actual (${disponible:,.2f}).")
                     else:
                         run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (%s,%s,%s,%s,%s,%s)", (mi_id, monto_solicitado, monto_solicitado, clean_text(tipo_cred), 'SOLICITADO', hoy_str))
                         registrar_bitacora("NUEVA SOLICITUD", f"El socio ID {mi_id} solicitó crédito de ${monto_solicitado}")
