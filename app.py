@@ -15,7 +15,24 @@ from PIL import Image, ImageDraw, ImageFont
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
-# 0. FUNCIONES DE UTILIDAD Y REGLAS DE NEGOCIO
+# CONFIGURACIÓN DE PÁGINA Y SESIÓN (DEBE IR PRIMERO)
+# ==========================================
+st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
+
+if 'logged_in' not in st.session_state:
+    st.session_state.update({
+        'logged_in': False, 
+        'username': None, 
+        'rol': None, 
+        'socio_id': None, 
+        'display_name': None
+    })
+
+if 'db_initialized' not in st.session_state:
+    st.session_state['db_initialized'] = False
+
+# ==========================================
+# 0. FUNCIONES DE UTILIDAD
 # ==========================================
 def get_guayaquil_time():
     tz = pytz.timezone('America/Guayaquil')
@@ -32,39 +49,6 @@ def format_datetime(dt): return dt.strftime("%d/%m/%Y %H:%M:%S")
 def parse_date(date_str):
     try: return datetime.strptime(date_str, "%d/%m/%Y")
     except ValueError: return datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
-
-def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
-    fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
-    d_cobro = fecha_cobro_dt.date() if hasattr(fecha_cobro_dt, 'date') else fecha_cobro_dt
-    d_otorg = fecha_otorg_dt.date() if hasattr(fecha_otorg_dt, 'date') else fecha_otorg_dt
-    dias_transcurridos = (d_cobro - d_otorg).days
-    if dias_transcurridos < 0: dias_transcurridos = 0
-    meses_calendario = (d_cobro.year - d_otorg.year) * 12 + d_cobro.month - d_otorg.month
-    if d_cobro.day < d_otorg.day: meses_calendario -= 1
-    meses_calendario = max(0, meses_calendario)
-    meses_a_cobrar = 0
-    if tipo_credito == "ESPECIAL (0% INTERES)": meses_a_cobrar = 0
-    elif tipo_credito == "CORTO PLAZO (5 DIAS)":
-        if dias_transcurridos <= 5: meses_a_cobrar = 0
-        else: meses_a_cobrar = max(1, meses_calendario)
-    else: meses_a_cobrar = max(1, meses_calendario)
-    interes_total_generado = capital_original * 0.10 * meses_a_cobrar
-    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
-    return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
-
-def obtener_limites_prestamo():
-    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
-    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
-    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
-    
-    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
-    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-    cap_calle = cap_pres - cap_dev
-    
-    base_calculo = t_dep + t_ing_ex + t_int_gan
-    limite_70 = base_calculo * 0.70
-    disponible = limite_70 - cap_calle
-    return max(0.0, disponible), limite_70, cap_calle, base_calculo
 
 # ==========================================
 # 1. CONEXIÓN POSTGRESQL (NEON CLOUD)
@@ -88,6 +72,14 @@ def init_db():
         c.execute("INSERT INTO usuarios (username, password, rol) VALUES ('ADMIN', 'ADMIN', 'Administrador')")
     conn.commit()
     conn.close()
+
+if not st.session_state['db_initialized']:
+    try:
+        init_db()
+        st.session_state['db_initialized'] = True
+    except Exception as e:
+        st.error(f"Falla de conexión con la base de datos Neon. Verifica tus Secrets: {e}")
+        st.stop()
 
 def run_query(query, params=(), returning=False):
     conn = get_db_connection()
@@ -130,8 +122,41 @@ def registrar_bitacora(accion, detalle):
     fecha_hora = format_datetime(get_guayaquil_time())
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
+def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
+    fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
+    d_cobro = fecha_cobro_dt.date() if hasattr(fecha_cobro_dt, 'date') else fecha_cobro_dt
+    d_otorg = fecha_otorg_dt.date() if hasattr(fecha_otorg_dt, 'date') else fecha_otorg_dt
+    dias_transcurridos = (d_cobro - d_otorg).days
+    if dias_transcurridos < 0: dias_transcurridos = 0
+    meses_calendario = (d_cobro.year - d_otorg.year) * 12 + d_cobro.month - d_otorg.month
+    if d_cobro.day < d_otorg.day: meses_calendario -= 1
+    meses_calendario = max(0, meses_calendario)
+    meses_a_cobrar = 0
+    if tipo_credito == "ESPECIAL (0% INTERES)": meses_a_cobrar = 0
+    elif tipo_credito == "CORTO PLAZO (5 DIAS)":
+        if dias_transcurridos <= 5: meses_a_cobrar = 0
+        else: meses_a_cobrar = max(1, meses_calendario)
+    else: meses_a_cobrar = max(1, meses_calendario)
+    interes_total_generado = capital_original * 0.10 * meses_a_cobrar
+    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
+    return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
+
+def obtener_limites_prestamo():
+    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
+    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
+    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
+    
+    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
+    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
+    cap_calle = cap_pres - cap_dev
+    
+    base_calculo = t_dep + t_ing_ex + t_int_gan
+    limite_70 = base_calculo * 0.70
+    disponible = limite_70 - cap_calle
+    return max(0.0, disponible), limite_70, cap_calle, base_calculo
+
 # ==========================================
-# 2. MOTORES DE COMPROBANTES TIPO IMAGEN (PNG)
+# 2. MOTORES DE COMPROBANTES Y PDF
 # ==========================================
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
     alto = 380 + (len(detalles) * 45)
@@ -343,7 +368,7 @@ if not st.session_state['logged_in']:
             color: #091D3E !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
-        div[data-testid="stForm"] .stTextInput { margin-bottom: -15px !important; }
+        div[data-testid="stForm"] .stTextInput { margin-bottom: -10px !important; }
         
         input {
             background-color: #FFFFFF !important; border: 1px solid #D6D2C4 !important;
@@ -351,17 +376,45 @@ if not st.session_state['logged_in']:
             padding-left: 10px !important; font-size: 14px !important;
         }
 
-        button[kind="primaryFormSubmit"] {
-            background-color: #122B4D !important; color: #FFFFFF !important;
-            width: 100% !important; border-radius: 8px !important;
-            border: none !important; padding: 8px !important; margin-top: 15px !important;
+        /* DISEÑO ESPECÍFICO DE BOTONES DE LOGIN PARA EVITAR CAJAS AZULES RARAS */
+        div.stButton > button[kind="primaryFormSubmit"] {
+            background-color: #122B4D !important;
+            color: #FFFFFF !important;
+            width: 100% !important;
+            border-radius: 8px !important;
+            border: none !important;
+            padding: 8px !important;
+            margin-top: 15px !important;
         }
-        button[kind="primaryFormSubmit"]:hover { background-color: #1C447A !important; }
-        button[kind="primaryFormSubmit"] p { color: #FFFFFF !important; font-weight: bold !important; font-size: 15px !important; white-space: nowrap !important; text-align: center !important; }
+        div.stButton > button[kind="primaryFormSubmit"]:hover {
+            background-color: #1C447A !important;
+        }
+        div.stButton > button[kind="primaryFormSubmit"] p {
+            color: #FFFFFF !important;
+            font-weight: bold !important;
+            font-size: 15px !important;
+            white-space: nowrap !important;
+            text-align: center !important;
+        }
         
-        button[kind="secondaryFormSubmit"] { background-color: transparent !important; border: none !important; box-shadow: none !important; width: 100% !important; margin-top: 0px !important; padding: 0 !important; }
-        button[kind="secondaryFormSubmit"]:hover p { text-decoration: underline !important; }
-        button[kind="secondaryFormSubmit"] p { color: #1A5632 !important; font-size: 13px !important; text-align: center !important; white-space: nowrap !important; }
+        /* Botón de Olvido de contraseña como texto limpio */
+        div.stButton > button[kind="secondaryFormSubmit"] {
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            width: 100% !important;
+            margin-top: 0px !important;
+            padding: 0 !important;
+        }
+        div.stButton > button[kind="secondaryFormSubmit"]:hover p {
+            text-decoration: underline !important;
+        }
+        div.stButton > button[kind="secondaryFormSubmit"] p {
+            color: #1A5632 !important;
+            font-size: 13px !important;
+            text-align: center !important;
+            white-space: nowrap !important;
+        }
 
         @media (max-width: 768px) {
             .block-container { padding-top: 2rem !important; }
@@ -399,6 +452,7 @@ if not st.session_state['logged_in']:
                             st.success("✅ ¡Clave actualizada!")
                         else: st.error("❌ La cédula no existe o no es Socio.")
                     else: st.warning("⚠️ Llene ambos campos.")
+
         else:
             with st.form("login_form"):
                 if os.path.exists("logo_banco.png"):
@@ -627,7 +681,8 @@ if st.session_state['rol'] == 'Administrador':
                         pdf.cell(anchos[3], 10, f"${row['SALDO CUENTA']:.2f}", border=1, fill=True, align='R')
                         pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", '', 9)
                         pdf.cell(anchos[4], 10, str(row['TIENE CREDITO']), border=1, fill=True, align='C')
-                        pdf.ln(); fill = not fill
+                        pdf.ln()
+                        fill = not fill
                     try: return pdf.output(dest='S').encode('latin1')
                     except: return bytes(pdf.output())
                 st.download_button("📄 GENERAR REPORTE EN PDF", data=crear_pdf_socios(), file_name="REPORTE_SOCIOS.pdf", mime="application/pdf")
@@ -657,7 +712,7 @@ if st.session_state['rol'] == 'Administrador':
                 with st.form("form_editar_socio"):
                     col_ed1, col_ed2 = st.columns(2)
                     with col_ed1: e_ced = st.text_input("CÉDULA", value=datos_actuales[0]); e_nom = st.text_input("NOMBRES", value=datos_actuales[1]); e_ape = st.text_input("APELLIDOS", value=datos_actuales[2])
-                    with col_ed2: e_tel = st.text_input("TELÉFONO", value=datos_actuales[3]); e_correo = st.text_input("CORREO", value=datos_actuales[4]); st.write("<br><br>", unsafe_allow_html=True); btn_editar = st.form_submit_button("GUARDAR CAMBIOS")
+                    with col_ed2: e_tel = text_input("TELÉFONO", value=datos_actuales[3]); e_correo = st.text_input("CORREO", value=datos_actuales[4]); st.write("<br><br>", unsafe_allow_html=True); btn_editar = st.form_submit_button("GUARDAR CAMBIOS")
                     if btn_editar:
                         run_query("UPDATE socios SET cedula=%s, nombres=%s, apellidos=%s, telefono=%s, correo=%s WHERE id=%s", (clean_text(e_ced), clean_text(e_nom), clean_text(e_ape), clean_text(e_tel), clean_text(e_correo), id_sel))
                         registrar_bitacora("EDITAR SOCIO", f"Actualizados datos del Socio ID: {id_sel}")
@@ -687,8 +742,10 @@ if st.session_state['rol'] == 'Administrador':
                     submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
                 
                 if submit_tx:
-                    if not socio_id: st.error("⚠️ Por favor, busque y seleccione un socio primero.")
-                    elif monto is None: st.error("⚠️ Por favor, ingrese un monto válido.")
+                    if not socio_id:
+                        st.error("⚠️ Por favor, busque y seleccione un socio primero.")
+                    elif monto is None:
+                        st.error("⚠️ Por favor, ingrese un monto válido.")
                     else:
                         s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
                         tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
@@ -783,7 +840,6 @@ if st.session_state['rol'] == 'Administrador':
                     
                     col_f1, col_f2 = st.columns([1, 2])
                     with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
-                    # Corrección de seguridad: Ejecución con la función global de tiempo para blindar contra NameError
                     interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], get_guayaquil_time())
                     with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
                     
@@ -822,7 +878,6 @@ if st.session_state['rol'] == 'Administrador':
                 total_int = 0.0
                 
                 for _, row in df_activos.iterrows():
-                    # Solución definitiva al NameError: Invocación directa del motor global de tiempo
                     int_pend, meses = calcular_interes_pendiente(row['id'], row['CAPITAL_ORIGINAL'], row['TIPO_CREDITO'], row['FECHA_OTORGAMIENTO'], get_guayaquil_time())
                     total_cap += row['SALDO_CAPITAL']
                     total_int += int_pend
@@ -876,7 +931,8 @@ if st.session_state['rol'] == 'Administrador':
                     except: return bytes(pdf.output())
                     
                 st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
-            else: st.info("No hay créditos vigentes en este momento.")
+            else:
+                st.info("No hay créditos vigentes en este momento.")
 
     elif menu == "🖨️ REIMPRESIÓN":
         st.header("MÓDULO DE REIMPRESIÓN DE COMPROBANTES")
@@ -970,8 +1026,10 @@ if st.session_state['rol'] == 'Administrador':
         with tab_config:
             st.write("### CONFIGURAR LOGOTIPO DEL BANCO")
             st.info("💡 **Despliegue en la Nube:** Para que la imagen del logotipo sea permanente en internet, debes añadir el archivo `logo_banco.png` directamente a tu repositorio en GitHub.")
-            if os.path.exists("logo_banco.png"): st.image("logo_banco.png", width=150)
-            else: st.warning("No se encontró el archivo 'logo_banco.png' en la carpeta actual del proyecto.")
+            if os.path.exists("logo_banco.png"):
+                st.image("logo_banco.png", width=150)
+            else:
+                st.warning("No se encontró el archivo 'logo_banco.png' en la carpeta actual del proyecto.")
                         
         st.write("<br><br>", unsafe_allow_html=True); st.error("### ⚠️ ZONA DE PELIGRO: FORMATEO DEL SISTEMA")
         with st.expander("DESPLEGAR OPCIONES DE REINICIO TOTAL"):
@@ -1019,7 +1077,8 @@ elif st.session_state['rol'] == 'SOCIO':
                 tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)"])
                 st.write(""); 
                 if st.form_submit_button("RADICAR SOLICITUD DE CRÉDITO"):
-                    if monto_solicitado is None: st.error("⚠️ Por favor, ingrese un monto válido.")
+                    if monto_solicitado is None: 
+                        st.error("⚠️ Por favor, ingrese un monto válido.")
                     elif monto_solicitado > disponible:
                         st.error(f"❌ El monto solicitado (${monto_solicitado:,.2f}) supera el valor disponible actual (${disponible:,.2f}).")
                     else:
