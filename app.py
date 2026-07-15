@@ -177,8 +177,8 @@ if not st.session_state['logged_in']:
         
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
-            padding: 20px 25px 15px 25px !important;
-            border-radius: 20px !important;
+            padding: 30px 25px 20px 25px !important;
+            border-radius: 15px !important;
             box-shadow: 0px 10px 40px rgba(0,0,0,0.7) !important;
             border: none !important;
         }
@@ -189,7 +189,7 @@ if not st.session_state['logged_in']:
         }
         
         div[data-testid="stForm"] .stTextInput {
-            margin-bottom: -15px !important;
+            margin-bottom: -10px !important;
         }
         
         input {
@@ -201,45 +201,49 @@ if not st.session_state['logged_in']:
             font-size: 14px !important;
         }
 
-        /* Ajuste de Botones Login */
+        /* CORRECCIÓN ABSOLUTA DEL BOTÓN DE INICIO DE SESIÓN */
         div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
             background-color: #122B4D !important;
             border: none !important;
-            border-radius: 8px !important;
-            padding: 10px 0px !important;
-            width: 100% !important; 
-            margin-top: 5px !important;
+            border-radius: 6px !important;
+            padding: 8px 0px !important;
+            width: 100% !important; /* Toma todo el ancho del formulario */
+            margin-top: 15px !important;
+            min-height: 42px !important;
             display: block !important;
         }
         div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
             background-color: #1C447A !important;
         }
         
-        /* Forzando letras blancas en el boton principal */
+        /* OBLIGAMOS A QUE EL TEXTO SEA BLANCO, PEQUEÑO Y EN UNA SOLA LÍNEA */
         div[data-testid="stForm"] button[kind="primaryFormSubmit"] p {
             color: #FFFFFF !important;
             font-weight: 600 !important;
-            font-size: 16px !important;
+            font-size: 15px !important;
+            white-space: nowrap !important;
+            margin: 0 !important;
+            padding: 0 !important;
         }
         
+        /* Botón secundario de olvido de contraseña */
         div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background-color: transparent !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0px !important;
             width: 100% !important;
-            margin-top: 0px !important;
+            margin-top: 5px !important;
             min-height: 20px !important;
         }
         div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover p {
             text-decoration: underline !important;
             color: #122B4D !important;
         }
-        
-        /* Forzando letras verdes en boton secundario */
         div[data-testid="stForm"] button[kind="secondaryFormSubmit"] p {
             color: #1A5632 !important;
             font-size: 13px !important;
+            white-space: nowrap !important;
         }
 
         @media (max-width: 768px) {
@@ -249,7 +253,8 @@ if not st.session_state['logged_in']:
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1.8, 1, 1.8])
+    # Contenedor centrado y proporcionado para no aplastar los botones
+    col1, col2, col3 = st.columns([1.3, 1, 1.3])
     
     with col2:
         if st.session_state.get('show_reset', False):
