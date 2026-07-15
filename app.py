@@ -6,6 +6,7 @@ import math
 import unicodedata
 import io
 import os
+import urllib.request
 from fpdf import FPDF
 import plotly.express as px
 import psycopg2
@@ -15,7 +16,7 @@ from PIL import Image, ImageDraw, ImageFont
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
-# 1. INICIALIZACIÓN DE PÁGINA Y SESIÓN (¡VITAL!)
+# 1. INICIALIZACIÓN DE PÁGINA Y SESIÓN
 # ==========================================
 st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
 
@@ -153,80 +154,81 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# 4. BUSCADOR INTELIGENTE DE FUENTES Y MOTORES PNG
+# 4. SOLUCIÓN DEFINITIVA A FUENTES PEQUEÑAS EN LA NUBE
 # ==========================================
 def cargar_fuente(tamanio, negrita=False):
-    rutas_linux = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if negrita else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if negrita else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf" if negrita else "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-        "arialbd.ttf" if negrita else "arial.ttf"
-    ]
-    for ruta in rutas_linux:
+    nombre_archivo = "Roboto-Bold.ttf" if negrita else "Roboto-Regular.ttf"
+    
+    if not os.path.exists(nombre_archivo):
         try:
-            return ImageFont.truetype(ruta, tamanio)
-        except:
-            pass
-    return ImageFont.load_default()
+            if negrita: url = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"
+            else: url = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf"
+            urllib.request.urlretrieve(url, nombre_archivo)
+        except: pass 
+    
+    try: return ImageFont.truetype(nombre_archivo, tamanio)
+    except: return ImageFont.load_default()
 
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
-    alto = 450 + (len(detalles) * 60)
+    alto = 500 + (len(detalles) * 75)
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((160, 160))
-            logo_height = logo_img.height + 25
+            logo_img.thumbnail((180, 180))
+            logo_height = logo_img.height + 30
             alto += logo_height
         except: pass
             
-    img = Image.new('RGB', (700, alto), color='#F8F5EE')
+    img = Image.new('RGB', (800, alto), color='#F8F5EE')
     d = ImageDraw.Draw(img)
     
-    # Fuentes garantizadas y de buen tamaño
-    f_title = cargar_fuente(34, True)
-    f_sub = cargar_fuente(24, False)
-    f_bold = cargar_fuente(28, True)
-    f_text = cargar_fuente(26, False)
-    f_small = cargar_fuente(18, False)
+    # TIPOGRAFÍA GIGANTE
+    f_title = cargar_fuente(42, True)
+    f_sub = cargar_fuente(28, False)
+    f_bold = cargar_fuente(32, True)
+    f_text = cargar_fuente(30, False)
+    f_small = cargar_fuente(22, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
-        except: return font.getbbox(text)[2] if hasattr(font, 'getbbox') else font.getsize(text)[0]
+        except:
+            bbox = font.getmask(text).getbbox()
+            return bbox[2] if bbox else 10
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
-        x = (700 - w) / 2
+        x = (800 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
-    y_pos = 40
+    y_pos = 50
     if logo_img:
-        logo_x = int((700 - logo_img.width) / 2)
+        logo_x = int((800 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
         y_pos += logo_height
         
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    y_pos += 55
+    y_pos += 65
     draw_centered(y_pos, titulo, f_bold, '#122B4D')
-    y_pos += 45
+    y_pos += 55
     draw_centered(y_pos, f"REF: {num_ref}", f_small, '#555555')
-    y_pos += 30
+    y_pos += 35
     draw_centered(y_pos, f"FECHA: {format_datetime(get_guayaquil_time())}", f_small, '#555555')
     
-    y_pos += 40
-    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
+    y_pos += 50
+    d.line([(50, y_pos), (750, y_pos)], fill='#CCCCCC', width=3)
     
-    y_pos += 30
+    y_pos += 40
     d.text((50, y_pos), "DATOS DEL ASOCIADO:", font=f_bold, fill='#091D3E')
     n_corto = socio_nombre[:35] + "..." if len(socio_nombre) > 35 else socio_nombre
-    y_pos += 45
+    y_pos += 50
     d.text((50, y_pos), n_corto, font=f_text, fill='#333333')
     
-    y_pos += 55
-    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
+    y_pos += 65
+    d.line([(50, y_pos), (750, y_pos)], fill='#CCCCCC', width=3)
     
-    y_pos += 35
+    y_pos += 45
     for key, val in detalles.items():
         is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key or "SALDO" in key
         f_k = f_bold if is_total else f_sub
@@ -235,70 +237,73 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
         
         d.text((50, y_pos), f"{key}:", font=f_k, fill='#555555')
         w_val = get_text_width(str(val), f_v)
-        d.text((650 - w_val, y_pos), str(val), font=f_v, fill=color)
-        y_pos += 55
+        d.text((750 - w_val, y_pos), str(val), font=f_v, fill=color)
+        y_pos += 70
     
-    y_pos += 20
-    d.line([(50, y_pos), (650, y_pos)], fill='#CCCCCC', width=2)
-    draw_centered(y_pos + 35, "Gracias por su confianza", f_small, '#777777')
-    draw_centered(y_pos + 65, "Documento valido como comprobante", f_small, '#777777')
+    y_pos += 30
+    d.line([(50, y_pos), (750, y_pos)], fill='#CCCCCC', width=3)
+    draw_centered(y_pos + 45, "Gracias por su confianza", f_small, '#777777')
+    draw_centered(y_pos + 80, "Documento valido como comprobante", f_small, '#777777')
     
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
 
 def generar_imagen_dashboard(detalles):
-    alto_filas = len(detalles) * 70
-    alto_total = 320 + alto_filas + 100
+    alto_filas = len(detalles) * 80
+    alto_total = 380 + alto_filas + 120
     
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((160, 160))
-            logo_height = logo_img.height + 25
+            logo_img.thumbnail((180, 180))
+            logo_height = logo_img.height + 30
             alto_total += logo_height
         except: pass
 
-    img = Image.new('RGB', (800, alto_total), color='#F8F5EE')
+    # Lienzo ensanchado a 900 para letras extra grandes
+    img = Image.new('RGB', (900, alto_total), color='#F8F5EE')
     d = ImageDraw.Draw(img)
 
-    f_title = cargar_fuente(36, True)
-    f_sub = cargar_fuente(24, False)
-    f_bold = cargar_fuente(28, True)
-    f_text = cargar_fuente(26, False)
-    f_small = cargar_fuente(18, False)
+    f_title = cargar_fuente(46, True)
+    f_sub = cargar_fuente(28, False)
+    f_bold = cargar_fuente(34, True)
+    f_text = cargar_fuente(32, False)
+    f_small = cargar_fuente(22, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
-        except: return font.getbbox(text)[2] if hasattr(font, 'getbbox') else font.getsize(text)[0]
+        except:
+            bbox = font.getmask(text).getbbox()
+            return bbox[2] if bbox else 10
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
-        x = (800 - w) / 2
+        x = (900 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
-    y_pos = 40
+    y_pos = 50
     if logo_img:
-        logo_x = int((800 - logo_img.width) / 2)
+        logo_x = int((900 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
         y_pos += logo_height
 
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    y_pos += 55
+    y_pos += 65
     draw_centered(y_pos, "RESUMEN FINANCIERO", f_bold, '#122B4D')
-    y_pos += 45
+    y_pos += 55
     draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
     
-    y_pos += 60
+    y_pos += 75
     
-    d.rectangle([40, y_pos, 760, y_pos + 55], fill='#122B4D')
-    d.text((60, y_pos + 15), "CONCEPTO", font=f_bold, fill='#FFFFFF')
+    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#122B4D')
+    d.text((70, y_pos + 18), "CONCEPTO", font=f_bold, fill='#FFFFFF')
     w_monto = get_text_width("MONTO", f_bold)
-    d.text((740 - w_monto, y_pos + 15), "MONTO", font=f_bold, fill='#FFFFFF')
+    d.text((830 - w_monto, y_pos + 18), "MONTO", font=f_bold, fill='#FFFFFF')
     
-    y_pos += 55
+    y_pos += 65
 
     for index, (key, val) in enumerate(detalles.items()):
         if key == "Disponible para prestamos":
@@ -317,14 +322,14 @@ def generar_imagen_dashboard(detalles):
             font_k = f_text
             font_v = f_text
 
-        d.rectangle([40, y_pos, 760, y_pos + 65], fill=bg_color, outline="#CCCCCC", width=1)
-        d.text((60, y_pos + 18), key, font=font_k, fill=text_color)
+        d.rectangle([50, y_pos, 850, y_pos + 80], fill=bg_color, outline="#CCCCCC", width=1)
+        d.text((70, y_pos + 22), key, font=font_k, fill=text_color)
         w_val = get_text_width(str(val), font_v)
-        d.text((740 - w_val, y_pos + 18), str(val), font=font_v, fill=text_color)
+        d.text((830 - w_val, y_pos + 22), str(val), font=font_v, fill=text_color)
         
-        y_pos += 65
+        y_pos += 80
 
-    y_pos += 40
+    y_pos += 50
     draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
     
     buf = io.BytesIO()
@@ -526,9 +531,8 @@ st.markdown("""
 
 if os.path.exists("logo_banco.png"): st.sidebar.image("logo_banco.png")
 
-hoy_dt = get_guayaquil_time()
-hoy_str = format_date(hoy_dt)
-hora = hoy_dt.hour
+hoy_str = format_date(get_guayaquil_time())
+hora = get_guayaquil_time().hour
 
 if hora < 12: saludo_tiempo = "Buenos días"
 elif hora < 18: saludo_tiempo = "Buenas tardes"
@@ -712,7 +716,11 @@ if st.session_state['rol'] == 'Administrador':
             with st.form("form_trx"):
                 col_tx1, col_tx2 = st.columns(2)
                 with col_tx1: 
-                    socio_id = st.selectbox("🔍 BUSCAR Y SELECCIONAR SOCIO", socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'], index=None, placeholder="✍️ Clic aquí para escribir el nombre o cédula...")
+                    socio_id = st.selectbox(
+                        "🔍 BUSCAR Y SELECCIONAR SOCIO", 
+                        socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
+                        index=None, placeholder="✍️ Clic aquí para escribir el nombre o cédula..."
+                    )
                     tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
                 with col_tx2: 
                     monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0, value=None)
@@ -720,12 +728,15 @@ if st.session_state['rol'] == 'Administrador':
                     submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
                 
                 if submit_tx:
-                    if not socio_id: st.error("⚠️ Por favor, busque y seleccione un socio primero.")
-                    elif monto is None: st.error("⚠️ Por favor, ingrese un monto válido.")
+                    if not socio_id:
+                        st.error("⚠️ Por favor, busque y seleccione un socio primero.")
+                    elif monto is None:
+                        st.error("⚠️ Por favor, ingrese un monto válido.")
                     else:
                         s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
                         tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
                         registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
+                        
                         img_bytes = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id}", nombre_socio, {"MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
                         st.session_state['ultimo_recibo_tx'] = img_bytes
                         st.session_state['nombre_recibo_tx'] = f"Voucher_{clean_text(tipo)}_{s_id}.png"
@@ -747,7 +758,7 @@ if st.session_state['rol'] == 'Administrador':
                 for _, row in solicitudes.iterrows():
                     st.info(f"**SOLICITUD PENDIENTE:** {row['nombres']} {row['apellidos']} solicita **${row['CAPITAL_ORIGINAL']}** bajo la modalidad **{row['TIPO_CREDITO']}**.")
                     col1, col2, col3 = st.columns([2, 1, 1])
-                    with col1: f_otorga = st.date_input(f"FECHA DE OTORGAMIENTO (ID:{row['id']})", value=hoy_dt.date())
+                    with col1: f_otorga = st.date_input(f"FECHA DE OTORGAMIENTO (ID:{row['id']})", value=get_guayaquil_time().date())
                     with col2: 
                         st.write("<br>", unsafe_allow_html=True)
                         if st.button("✅ APROBAR", key=f"apr_{row['id']}", use_container_width=True):
@@ -773,11 +784,15 @@ if st.session_state['rol'] == 'Administrador':
                 with st.form("form_credito_directo"):
                     col_cr1, col_cr2 = st.columns(2)
                     with col_cr1: 
-                        socio_cred = st.selectbox("SOCIO BENEFICIARIO", socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'], index=None, placeholder="✍️ Buscar socio por nombre o cédula...")
+                        socio_cred = st.selectbox(
+                            "SOCIO BENEFICIARIO", 
+                            socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
+                            index=None, placeholder="✍️ Buscar socio por nombre o cédula..."
+                        )
                         capital = st.number_input("CAPITAL A PRESTAR ($)", min_value=1.0, step=100.0, value=None)
                     with col_cr2: 
                         tipo_cred = st.selectbox("TIPO DE CONDICIÓN", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)", "ESPECIAL (0% INTERES)"])
-                        fecha_ot = st.date_input("FECHA DE OTORGAMIENTO", value=hoy_dt.date())
+                        fecha_ot = st.date_input("FECHA DE OTORGAMIENTO", value=get_guayaquil_time().date())
                     
                     st.write(""); 
                     if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE"):
@@ -789,6 +804,7 @@ if st.session_state['rol'] == 'Administrador':
                             s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
                             pr_id = run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
                             registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}")
+                            
                             img_bytes = generar_voucher_imagen("CREDITO OTORGADO", f"CR-{pr_id}", nombre_socio, {"MODALIDAD": clean_text(tipo_cred), "CAPITAL ENTREGADO": f"${capital:,.2f}", "ESTADO": "VIGENTE"})
                             st.session_state['ultimo_recibo_cr'] = img_bytes
                             st.session_state['nombre_recibo_cr'] = f"Voucher_Credito_{s_id}.png"
@@ -809,7 +825,7 @@ if st.session_state['rol'] == 'Administrador':
                     p_data = prestamos_vig[prestamos_vig['id'] == p_id].iloc[0]
                     
                     col_f1, col_f2 = st.columns([1, 2])
-                    with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
+                    with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=get_guayaquil_time().date())
                     interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], get_guayaquil_time())
                     with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
                     
@@ -846,11 +862,19 @@ if st.session_state['rol'] == 'Administrador':
                 reporte_data = []
                 total_cap = 0.0
                 total_int = 0.0
+                
                 for _, row in df_activos.iterrows():
                     int_pend, meses = calcular_interes_pendiente(row['id'], row['CAPITAL_ORIGINAL'], row['TIPO_CREDITO'], row['FECHA_OTORGAMIENTO'], get_guayaquil_time())
                     total_cap += row['SALDO_CAPITAL']
                     total_int += int_pend
-                    reporte_data.append({"SOCIO": f"{row['nombres']} {row['apellidos']}", "FECHA OTORG.": row['FECHA_OTORGAMIENTO'], "MESES": meses, "CAPITAL VIGENTE": row['SALDO_CAPITAL'], "INTERÉS GENERADO": round(int_pend, 2), "TOTAL ESPERADO": round(row['SALDO_CAPITAL'] + int_pend, 2)})
+                    reporte_data.append({
+                        "SOCIO": f"{row['nombres']} {row['apellidos']}",
+                        "FECHA OTORG.": row['FECHA_OTORGAMIENTO'],
+                        "MESES": meses,
+                        "CAPITAL VIGENTE": row['SALDO_CAPITAL'],
+                        "INTERÉS GENERADO": round(int_pend, 2),
+                        "TOTAL ESPERADO": round(row['SALDO_CAPITAL'] + int_pend, 2)
+                    })
                 
                 df_rep = pd.DataFrame(reporte_data)
                 st.dataframe(df_rep, use_container_width=True)
@@ -893,7 +917,8 @@ if st.session_state['rol'] == 'Administrador':
                     except: return bytes(pdf.output())
                     
                 st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
-            else: st.info("No hay créditos vigentes en este momento.")
+            else:
+                st.info("No hay créditos vigentes en este momento.")
 
     elif menu == "🖨️ REIMPRESIÓN":
         st.header("MÓDULO DE REIMPRESIÓN DE COMPROBANTES")
@@ -910,6 +935,7 @@ if st.session_state['rol'] == 'Administrador':
                     tx_id = int(tx_sel_str.split(" - ")[0])
                     tx_data = df_tx[df_tx['id'] == tx_id].iloc[0]
                     nombre_socio_tx = f"{tx_data['nombres']} {tx_data['apellidos']}"
+                    
                     voucher_tx = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id} (COPIA)", nombre_socio_tx, {"MOVIMIENTO": clean_text(tx_data['tipo']), "MONTO PROCESADO": f"${tx_data['monto']:,.2f}", "FECHA ORIGINAL": tx_data['fecha'], "ESTADO": "COMPLETADO"})
                     st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_tx, file_name=f"Copia_Voucher_TX_{tx_id}.png", mime="image/png", type="primary")
             else: st.warning("No hay transacciones registradas.")
@@ -926,6 +952,7 @@ if st.session_state['rol'] == 'Administrador':
                     pg_data = df_pg[df_pg['p_id'] == pg_id].iloc[0]
                     nombre_socio_pg = f"{pg_data['nombres']} {pg_data['apellidos']}"
                     saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
+                    
                     voucher_pg = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, {"CONCEPTO": "PAGO DE CUOTA", "ABONO CAPITAL": f"${pg_data['pago_capital']:,.2f}", "PAGO INTERES": f"${pg_data['pago_interes']:,.2f}", "TOTAL CANCELADO": f"${(pg_data['pago_capital'] + pg_data['pago_interes']):,.2f}", "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"})
                     st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_pg, file_name=f"Copia_Voucher_Pago_{pg_id}.png", mime="image/png", type="primary")
             else: st.warning("No hay pagos registrados.")
@@ -941,6 +968,7 @@ if st.session_state['rol'] == 'Administrador':
                     cr_id = int(cr_sel_str.split(" - ")[0])
                     cr_data = df_cr[df_cr['id'] == cr_id].iloc[0]
                     nombre_socio_cr = f"{cr_data['nombres']} {cr_data['apellidos']}"
+                    
                     voucher_cr = generar_voucher_imagen("CREDITO OTORGADO", f"CR-{cr_id} (COPIA)", nombre_socio_cr, {"MODALIDAD": clean_text(cr_data['tipo_credito']), "CAPITAL ENTREGADO": f"${cr_data['capital_original']:,.2f}", "FECHA EMISION": cr_data['fecha_otorgamiento'], "ESTADO": "REGISTRADO"})
                     st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_cr, file_name=f"Copia_Voucher_Credito_{cr_id}.png", mime="image/png", type="primary")
             else: st.warning("No hay créditos otorgados registrados.")
