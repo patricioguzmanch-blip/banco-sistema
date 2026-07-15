@@ -98,15 +98,28 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# MOTOR DE COMPROBANTES TIPO IMAGEN (PNG)
+# MOTOR DE COMPROBANTES TIPO IMAGEN (PNG) CON LOGO
 # ==========================================
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
-    # Calcula el alto de la imagen según la cantidad de datos
+    # Calculamos el alto de la imagen en base a los detalles
     alto = 380 + (len(detalles) * 45)
+    
+    # Intentamos cargar el logo para aumentar el espacio si existe
+    logo_img = None
+    logo_height = 0
+    if os.path.exists("logo_banco.png"):
+        try:
+            logo_img = Image.open("logo_banco.png").convert("RGBA")
+            # Redimensionar el logo (máximo 140x140 px)
+            logo_img.thumbnail((140, 140))
+            logo_height = logo_img.height + 20
+            alto += logo_height
+        except:
+            pass
+            
     img = Image.new('RGB', (600, alto), color='#F8F5EE')
     d = ImageDraw.Draw(img)
     
-    # Fuentes (Si no hay Arial instalada en la nube, usa la estándar por defecto)
     try:
         f_title = ImageFont.truetype("arialbd.ttf", 26)
         f_sub = ImageFont.truetype("arial.ttf", 18)
@@ -129,25 +142,37 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
         x = (600 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
-    # Cabecera
-    draw_centered(30, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    draw_centered(70, titulo, f_bold, '#122B4D')
-    draw_centered(110, f"REF: {num_ref}", f_small, '#555555')
-    draw_centered(135, f"FECHA: {format_datetime(get_guayaquil_time())}", f_small, '#555555')
+    y_pos = 30
     
-    d.line([(50, 175), (550, 175)], fill='#CCCCCC', width=2)
+    # Si hay logo, lo pegamos centrado arriba
+    if logo_img:
+        logo_x = int((600 - logo_img.width) / 2)
+        img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
+        y_pos += logo_height
+        
+    draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
+    y_pos += 45
+    draw_centered(y_pos, titulo, f_bold, '#122B4D')
+    y_pos += 40
+    draw_centered(y_pos, f"REF: {num_ref}", f_small, '#555555')
+    y_pos += 25
+    draw_centered(y_pos, f"FECHA: {format_datetime(get_guayaquil_time())}", f_small, '#555555')
     
-    # Datos del socio
-    d.text((50, 195), "DATOS DEL SOCIO:", font=f_bold, fill='#091D3E')
+    y_pos += 30
+    d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
+    
+    y_pos += 20
+    d.text((50, y_pos), "DATOS DEL ASOCIADO:", font=f_bold, fill='#091D3E')
     n_corto = socio_nombre[:35] + "..." if len(socio_nombre) > 35 else socio_nombre
-    d.text((50, 230), n_corto, font=f_text, fill='#333333')
+    y_pos += 35
+    d.text((50, y_pos), n_corto, font=f_text, fill='#333333')
     
-    d.line([(50, 275), (550, 275)], fill='#CCCCCC', width=2)
+    y_pos += 40
+    d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
     
-    # Detalles dinámicos
-    y_pos = 300
+    y_pos += 25
     for key, val in detalles.items():
-        is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key
+        is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key or "SALDO" in key or "DISPONIBLE" in key
         f_k = f_bold if is_total else f_sub
         f_v = f_title if is_total else f_text
         color = '#091D3E' if is_total else '#333333'
@@ -157,7 +182,6 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
         d.text((550 - w_val, y_pos), str(val), font=f_v, fill=color)
         y_pos += 45
     
-    # Pie de página
     y_pos += 15
     d.line([(50, y_pos), (550, y_pos)], fill='#CCCCCC', width=2)
     draw_centered(y_pos + 25, "Gracias por su confianza", f_small, '#777777')
@@ -189,16 +213,9 @@ if 'logged_in' not in st.session_state:
 if not st.session_state['logged_in']:
     st.markdown("""
     <style>
-        .stApp {
-            background: linear-gradient(135deg, #091D3E 0%, #030B18 100%) !important;
-        }
+        .stApp { background: linear-gradient(135deg, #091D3E 0%, #030B18 100%) !important; }
         header { display: none !important; }
-        
-        .block-container { 
-            padding-top: 5vh !important; 
-            padding-bottom: 0 !important; 
-            max-width: 100% !important; 
-        }
+        .block-container { padding-top: 5vh !important; padding-bottom: 0 !important; max-width: 100% !important; }
         
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
@@ -208,62 +225,40 @@ if not st.session_state['logged_in']:
             border: none !important;
         }
         
-        div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] div {
+        div[data-testid="stForm"] p, div[data-testid="stForm"] label {
             color: #091D3E !important;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
         }
-        
-        div[data-testid="stForm"] .stTextInput {
-            margin-bottom: -10px !important;
-        }
+        div[data-testid="stForm"] .stTextInput { margin-bottom: -15px !important; }
         
         input {
-            background-color: #FFFFFF !important;
-            border: 1px solid #D6D2C4 !important;
-            border-radius: 6px !important;
-            color: #091D3E !important;
-            padding-left: 10px !important;
-            font-size: 14px !important;
+            background-color: #FFFFFF !important; border: 1px solid #D6D2C4 !important;
+            border-radius: 6px !important; color: #091D3E !important;
+            padding-left: 10px !important; font-size: 14px !important;
         }
 
-        /* DISEÑO ESPECÍFICO DE BOTONES DE LOGIN PARA EVITAR CAJAS AZULES RARAS */
-        div.stButton > button[kind="primaryFormSubmit"] {
-            background-color: #122B4D !important;
-            color: #FFFFFF !important;
-            width: 100% !important;
-            border-radius: 8px !important;
-            border: none !important;
-            padding: 8px !important;
-            margin-top: 15px !important;
+        /* INSTRUCCIÓN NUCLEAR PARA EL BOTÓN DE INICIO DE SESIÓN */
+        div[data-testid="stFormSubmitButton"] > button {
+            background-color: #122B4D !important; color: #FFFFFF !important;
+            width: 100% !important; display: flex !important; justify-content: center !important;
+            align-items: center !important; height: 42px !important; border-radius: 8px !important;
+            border: none !important; margin-top: 15px !important;
         }
-        div.stButton > button[kind="primaryFormSubmit"]:hover {
-            background-color: #1C447A !important;
-        }
-        div.stButton > button[kind="primaryFormSubmit"] p {
-            color: #FFFFFF !important;
-            font-weight: bold !important;
-            font-size: 15px !important;
-            white-space: nowrap !important;
-            text-align: center !important;
+        div[data-testid="stFormSubmitButton"] > button:hover { background-color: #1C447A !important; }
+        div[data-testid="stFormSubmitButton"] > button > div,
+        div[data-testid="stFormSubmitButton"] > button p {
+            color: #FFFFFF !important; font-size: 16px !important; font-weight: bold !important;
+            margin: 0 !important; padding: 0 !important; white-space: nowrap !important;
         }
         
-        /* Botón de Olvido de contraseña como texto limpio */
-        div.stButton > button[kind="secondaryFormSubmit"] {
-            background-color: transparent !important;
-            border: none !important;
-            box-shadow: none !important;
-            width: 100% !important;
-            margin-top: 0px !important;
-            padding: 0 !important;
+        /* Botón secundario (Olvido de contraseña) */
+        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
+            background-color: transparent !important; border: none !important; box-shadow: none !important;
+            padding: 0px !important; width: 100% !important; margin-top: 5px !important; min-height: 20px !important;
         }
-        div.stButton > button[kind="secondaryFormSubmit"]:hover p {
-            text-decoration: underline !important;
-        }
-        div.stButton > button[kind="secondaryFormSubmit"] p {
-            color: #1A5632 !important;
-            font-size: 13px !important;
-            text-align: center !important;
-            white-space: nowrap !important;
+        button[kind="secondaryFormSubmit"]:hover p { text-decoration: underline !important; color: #122B4D !important; }
+        button[kind="secondaryFormSubmit"] p {
+            color: #1A5632 !important; font-size: 13px !important; white-space: nowrap !important;
         }
 
         @media (max-width: 768px) {
@@ -273,7 +268,7 @@ if not st.session_state['logged_in']:
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1.3, 1, 1.3])
+    col1, col2, col3 = st.columns([1.5, 1, 1.5])
     
     with col2:
         if st.session_state.get('show_reset', False):
@@ -294,17 +289,14 @@ if not st.session_state['logged_in']:
                 if btn_save:
                     c_ced = clean_text(ced_input)
                     c_pwd = clean_text(pwd_new)
-                    
                     if c_ced and c_pwd:
                         user_data = fetch_data("SELECT id FROM usuarios WHERE username=%s AND rol='SOCIO'", (c_ced,))
                         if user_data:
                             run_query("UPDATE usuarios SET password=%s WHERE id=%s", (c_pwd, user_data[0][0]))
                             registrar_bitacora("RECUPERACION CLAVE", f"El socio CI {c_ced} actualizó su contraseña.")
                             st.success("✅ ¡Clave actualizada!")
-                        else:
-                            st.error("❌ La cédula no existe o no es Socio.")
-                    else:
-                        st.warning("⚠️ Llene ambos campos.")
+                        else: st.error("❌ La cédula no existe o no es Socio.")
+                    else: st.warning("⚠️ Llene ambos campos.")
 
         else:
             with st.form("login_form"):
@@ -333,26 +325,17 @@ if not st.session_state['logged_in']:
                         u_rol = usuario_db[0][1]
                         u_socio_id = usuario_db[0][2]
                         d_name = user_clean
-                        
                         if u_rol == 'SOCIO' and u_socio_id:
                             s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (u_socio_id,))
                             if s_data:
                                 nombres_partes = str(s_data[0][0]).split()
                                 d_name = " ".join(nombres_partes[:2]).title()
-                        else:
-                            d_name = "Administrador"
+                        else: d_name = "Administrador"
 
-                        st.session_state.update({
-                            'logged_in': True, 
-                            'username': user_clean, 
-                            'rol': u_rol, 
-                            'socio_id': u_socio_id,
-                            'display_name': d_name
-                        })
+                        st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': u_rol, 'socio_id': u_socio_id, 'display_name': d_name})
                         registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {u_rol}")
                         st.rerun()
-                    else: 
-                        st.error("Credenciales incorrectas.")
+                    else: st.error("Credenciales incorrectas.")
                 
         st.markdown("""
         <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
@@ -375,29 +358,17 @@ st.markdown("""
     h3 { color: #1F4E78 !important; font-size: 16px !important; font-weight: 600 !important; }
     
     div[data-testid="metric-container"], div[data-testid="stForm"] { 
-        background-color: #FFFFFF !important; 
-        border: 1px solid #E2E8F0 !important; 
-        padding: 15px 20px !important; 
-        border-radius: 12px !important; 
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.03) !important;
+        background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important; 
+        padding: 15px 20px !important; border-radius: 12px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.03) !important;
     }
     div[data-testid="metric-container"] { border-left: 5px solid #1F4E78 !important; }
 
     div.stButton > button:first-child { 
-        background-color: #122B4D !important; 
-        color: #FFFFFF !important; 
-        border: none !important; 
-        font-weight: 600 !important; 
-        border-radius: 8px !important;
-        padding: 8px 15px !important;
-        font-size: 14px !important;
-        transition: all 0.3s ease !important;
+        background-color: #122B4D !important; color: #FFFFFF !important; border: none !important; 
+        font-weight: 600 !important; border-radius: 8px !important; padding: 8px 15px !important;
+        font-size: 14px !important; transition: all 0.3s ease !important;
     }
-    div.stButton > button:first-child:hover { 
-        background-color: #1C447A !important; 
-        transform: translateY(-1px);
-        box-shadow: 0px 4px 10px rgba(0,0,0,0.15) !important;
-    }
+    div.stButton > button:first-child:hover { background-color: #1C447A !important; transform: translateY(-1px); box-shadow: 0px 4px 10px rgba(0,0,0,0.15) !important; }
 
     [data-testid="stSidebar"] { background-color: #F8F5EE !important; border-right: 1px solid #D6D2C4 !important; }
     [data-testid="stSidebar"] img { max-width: 180px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 15px; }
@@ -519,6 +490,7 @@ if st.session_state['rol'] == 'Administrador':
         col9.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
         
         st.write("---")
+        
         def crear_pdf_resumen():
             pdf = ResumenPDF()
             pdf.add_page()
@@ -546,7 +518,24 @@ if st.session_state['rol'] == 'Administrador':
             try: return pdf.output(dest='S').encode('latin1')
             except: return bytes(pdf.output())
 
-        st.download_button("📄 EXPORTAR RESUMEN OFICIAL A PDF", data=crear_pdf_resumen(), file_name="RESUMEN_FINANCIERO.pdf", mime="application/pdf")
+        def crear_imagen_resumen():
+            detalles_resumen = {
+                "TOTAL DEPOSITOS": f"${t_dep:,.2f}",
+                "TOTAL RETIROS": f"${t_ret:,.2f}",
+                "INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
+                "INTERESES GANADOS": f"${t_int_gan:,.2f}",
+                "TOTAL EGRESOS": f"${t_egr_ex:,.2f}",
+                "CREDITOS VIGENTES": f"${cap_calle:,.2f}",
+                "DISPONIBLE PRESTAMOS": f"${disponible:,.2f}",
+                "SALDO EN CAJA": f"${saldo_caja:,.2f}"
+            }
+            return generar_voucher_imagen("RESUMEN FINANCIERO", f"RF-{hoy_dt.strftime('%d%H%M')}", "SISTEMA CENTRAL", detalles_resumen)
+
+        col_dl1, col_dl2 = st.columns(2)
+        with col_dl1:
+            st.download_button("📄 EXPORTAR RESUMEN A PDF", data=crear_pdf_resumen(), file_name="RESUMEN_FINANCIERO.pdf", mime="application/pdf", use_container_width=True)
+        with col_dl2:
+            st.download_button("📲 DESCARGAR IMAGEN PARA WHATSAPP", data=crear_imagen_resumen(), file_name="RESUMEN_FINANCIERO.png", mime="image/png", type="primary", use_container_width=True)
 
     elif menu == "👥 SOCIOS":
         st.header("GESTIÓN DE SOCIOS")
