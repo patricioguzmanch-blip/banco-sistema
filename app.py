@@ -156,7 +156,7 @@ if 'db_initialized' not in st.session_state:
         st.stop()
 
 if 'logged_in' not in st.session_state:
-    st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None})
+    st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None, 'display_name': None})
 
 # ==========================================
 # DISEÑO INTERACTIVO DE LOGIN Y RECUPERACIÓN
@@ -171,9 +171,9 @@ if not st.session_state['logged_in']:
         
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
-            padding: 25px 20px 15px 20px !important;
-            border-radius: 15px !important;
-            box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
+            padding: 35px 25px 25px 25px !important;
+            border-radius: 20px !important;
+            box-shadow: 0px 10px 40px rgba(0,0,0,0.7) !important;
             border: none !important;
         }
         
@@ -183,7 +183,7 @@ if not st.session_state['logged_in']:
         }
         
         div[data-testid="stForm"] .stTextInput {
-            margin-bottom: -10px !important;
+            margin-bottom: -5px !important;
         }
         
         input {
@@ -195,32 +195,30 @@ if not st.session_state['logged_in']:
             font-size: 14px !important;
         }
 
-        /* BOTÓN PRIMARIO (Iniciar Sesión / Guardar) */
         button[kind="primaryFormSubmit"], button[kind="primary"] {
             background-color: #122B4D !important;
             color: #FFFFFF !important;
             border: none !important;
-            border-radius: 6px !important;
-            padding: 6px 0px !important;
+            border-radius: 8px !important;
+            padding: 10px 0px !important;
             font-weight: bold !important;
-            font-size: 15px !important;
+            font-size: 16px !important;
             width: 100% !important;
-            margin-top: 5px !important;
+            margin-top: 10px !important;
         }
         button[kind="primaryFormSubmit"]:hover, button[kind="primary"]:hover {
             background-color: #1C447A !important;
         }
         
-        /* BOTÓN SECUNDARIO INVISIBLE (Recuperar clave / Volver) */
         button[kind="secondaryFormSubmit"], button[kind="secondary"] {
             background-color: transparent !important;
             color: #1A5632 !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0px !important;
-            font-size: 12px !important;
+            font-size: 13px !important;
             width: 100% !important;
-            margin-top: 2px !important;
+            margin-top: 5px !important;
             min-height: 20px !important;
         }
         button[kind="secondaryFormSubmit"]:hover, button[kind="secondary"]:hover {
@@ -228,13 +226,18 @@ if not st.session_state['logged_in']:
             color: #122B4D !important;
             background-color: transparent !important;
         }
+
+        /* Ajuste nativo para que en celulares la tarjeta no se vea aplastada */
+        @media (max-width: 768px) {
+            .block-container { padding-top: 2rem !important; }
+            div[data-testid="stForm"] { padding: 25px 20px 20px 20px !important; }
+        }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1.5, 1, 1.5])
+    col1, col2, col3 = st.columns([1, 1.2, 1])
     
     with col2:
-        # PANTALLA DE RECUPERACIÓN DE CONTRASEÑA
         if st.session_state.get('show_reset', False):
             with st.form("reset_form"):
                 st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 5px;'>🔄 Nueva Contraseña</h3>", unsafe_allow_html=True)
@@ -255,7 +258,6 @@ if not st.session_state['logged_in']:
                     c_pwd = clean_text(pwd_new)
                     
                     if c_ced and c_pwd:
-                        # Se busca ESTRICTAMENTE si la cédula existe y si su rol es SOCIO
                         user_data = fetch_data("SELECT id FROM usuarios WHERE username=%s AND rol='SOCIO'", (c_ced,))
                         if user_data:
                             run_query("UPDATE usuarios SET password=%s WHERE id=%s", (c_pwd, user_data[0][0]))
@@ -266,35 +268,22 @@ if not st.session_state['logged_in']:
                     else:
                         st.warning("⚠️ Por favor, llene ambos campos.")
 
-        # PANTALLA NORMAL DE INICIO DE SESIÓN
         else:
             with st.form("login_form"):
                 
                 if os.path.exists("logo_banco.png"):
-                    col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
+                    # Le dimos mucho más peso a la columna central (3.0) para que la imagen crezca
+                    col_l1, col_l2, col_l3 = st.columns([1, 3.0, 1])
                     with col_l2: st.image("logo_banco.png", use_container_width=True)
                 else:
-                    st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h3>", unsafe_allow_html=True)
+                    st.markdown("<h2 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h2>", unsafe_allow_html=True)
                 
                 user_input = st.text_input("👤 Nombre de Usuario")
                 pwd_input = st.text_input("🔒 Contraseña", type="password")
                 
                 st.checkbox("Recordarme")
                 submit_btn = st.form_submit_button("Iniciar Sesión", type="primary")
-                
-                # El botón de Olvidó Contraseña se renderiza como texto invisible gracias al CSS
                 forgot_btn = st.form_submit_button("¿Olvidó su contraseña?", type="secondary")
-                
-                st.markdown("""
-                <div style='text-align: center; line-height: 1.3;'>
-                    <p style='font-size: 12px; margin-bottom: 5px; margin-top: 5px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
-                    <hr style='border: 0.5px solid #E0DCD0; margin: 10px 0;'>
-                    <p style='font-size: 11px; margin-bottom: 0;'>
-                        <span style='font-size: 14px;'>📞</span> Servicio al Cliente:<br>
-                        <b>1800-GUZMAN</b>
-                    </p>
-                </div>
-                """, unsafe_allow_html=True)
                 
                 if forgot_btn:
                     st.session_state['show_reset'] = True
@@ -305,14 +294,33 @@ if not st.session_state['logged_in']:
                     pwd_clean = clean_text(pwd_input)
                     usuario_db = fetch_data("SELECT id, rol, socio_id FROM usuarios WHERE username=%s AND password=%s", (user_clean, pwd_clean))
                     if usuario_db:
-                        st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': usuario_db[0][1], 'socio_id': usuario_db[0][2]})
-                        registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {usuario_db[0][1]}")
+                        u_rol = usuario_db[0][1]
+                        u_socio_id = usuario_db[0][2]
+                        d_name = user_clean
+                        
+                        # Buscador inteligente de los dos primeros nombres
+                        if u_rol == 'SOCIO' and u_socio_id:
+                            s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (u_socio_id,))
+                            if s_data:
+                                nombres_partes = str(s_data[0][0]).split()
+                                d_name = " ".join(nombres_partes[:2]).title()
+                        else:
+                            d_name = "Administrador"
+
+                        st.session_state.update({
+                            'logged_in': True, 
+                            'username': user_clean, 
+                            'rol': u_rol, 
+                            'socio_id': u_socio_id,
+                            'display_name': d_name
+                        })
+                        registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {u_rol}")
                         st.rerun()
                     else: 
                         st.error("Credenciales incorrectas.")
                 
         st.markdown("""
-        <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
+        <div style='text-align: center; margin-top: 25px; color: #7388A3; font-size: 12px; font-family: sans-serif;'>
             © 2026 Banco de la Familia Guzmán.<br>
             Desarrollado por <b>Patricio Guzmán</b>
         </div>
@@ -332,21 +340,49 @@ st.markdown("""
     div.stButton > button:first-child:hover { background-color: #153654; color: white; }
     [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
     
-    /* Logotipo más grande en el menú lateral. Max-width ampliado a 200px */
-    [data-testid="stSidebar"] img { max-width: 200px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 15px; }
+    /* Configuración del logotipo interno (mucho más grande) */
+    [data-testid="stSidebar"] img { max-width: 240px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 20px; }
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
+
+    /* REGLAS PARA TIPO APLICACIÓN MÓVIL */
+    @media (max-width: 768px) {
+        .block-container { padding: 1.5rem 1rem !important; }
+        h1 { font-size: 1.5rem !important; }
+        h2 { font-size: 1.3rem !important; }
+        h3 { font-size: 1.1rem !important; }
+        [data-testid="stSidebar"] { width: 100% !important; }
+        [data-testid="stTabs"] { width: 100% !important; }
+        button { width: 100% !important; margin-bottom: 10px !important; }
+        [data-testid="stDataFrame"] { width: 100% !important; overflow-x: auto; }
+    }
 </style>
 """, unsafe_allow_html=True)
 
 if os.path.exists("logo_banco.png"): st.sidebar.image("logo_banco.png")
-st.sidebar.title("👤 Panel de Control")
-st.sidebar.write(f"**USUARIO:** {st.session_state['username']}")
-st.sidebar.write(f"**ROL:** {clean_text(st.session_state['rol'])}")
-st.sidebar.divider()
 
+# Reloj interno para el saludo dinámico
 hoy_dt = get_guayaquil_time()
 hoy_str = format_date(hoy_dt)
+hora = hoy_dt.hour
+
+if hora < 12:
+    saludo_tiempo = "Buenos días"
+elif hora < 18:
+    saludo_tiempo = "Buenas tardes"
+else:
+    saludo_tiempo = "Buenas noches"
+
+nombre_pantalla = st.session_state.get('display_name', 'Usuario')
+
+st.sidebar.markdown(f"""
+<div style='text-align: center; margin-bottom: 20px;'>
+    <h3 style='color: #1F4E78; font-size: 18px; margin-bottom: 5px;'>👋 {saludo_tiempo},<br><b>{nombre_pantalla}</b></h3>
+    <p style='font-size: 12px; color: #7388A3; margin-top: 0;'>ROL: {clean_text(st.session_state['rol'])}</p>
+</div>
+""", unsafe_allow_html=True)
+
+st.sidebar.divider()
 
 def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
     fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
