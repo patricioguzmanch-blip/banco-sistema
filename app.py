@@ -11,11 +11,11 @@ import plotly.express as px
 import psycopg2
 import warnings
 
-# Ocultar advertencias de Pandas sobre conexiones crudas
+# Ocultar advertencias de Pandas
 warnings.filterwarnings('ignore', category=UserWarning)
 
 # ==========================================
-# 0. FUNCIONES DE UTILIDAD (REGLAS DE NEGOCIO)
+# 0. FUNCIONES DE UTILIDAD
 # ==========================================
 def get_guayaquil_time():
     tz = pytz.timezone('America/Guayaquil')
@@ -144,7 +144,7 @@ def generar_comprobante(titulo, num_ref, socio_nombre, detalles):
     except: return bytes(pdf.output())
 
 # ==========================================
-# INICIALIZACIÓN Y CSS DINÁMICO
+# INICIALIZACIÓN Y CONFIGURACIÓN PÁGINA
 # ==========================================
 st.set_page_config(page_title="Banco Familiar", layout="wide", page_icon="🏦")
 
@@ -159,42 +159,102 @@ if 'db_initialized' not in st.session_state:
 if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None})
 
-st.markdown("""
-<style>
-    [data-testid="stSidebar"] img { max-width: 130px !important; margin: 0 auto !important; display: block; background-color: transparent !important; }
-    [data-testid="stSidebar"] { overflow: hidden !important; }
-    [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
-    [data-testid="stSidebar"] .stRadio > div { gap: 0.1rem; }
-    img { background-color: transparent !important; }
-</style>
-""", unsafe_allow_html=True)
-
+# ==========================================
+# NUEVO DISEÑO DE PANTALLA DE LOGIN
+# ==========================================
 if not st.session_state['logged_in']:
     st.markdown("""
     <style>
-        .stApp { background-color: #0A192F !important; overflow: hidden !important; height: 100vh; }
-        .block-container { padding-top: 2rem; max-height: 100vh; overflow: hidden; }
+        /* Fondo azul profundo como en la imagen */
+        .stApp {
+            background: linear-gradient(135deg, #091D3E 0%, #030B18 100%) !important;
+        }
         header { display: none !important; }
-        div[data-testid="stForm"] { background-color: #FFFFFF; padding: 2rem; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); border-top: 5px solid #F5A623; }
-        h1, h2, h3, p, label { color: #333333 !important; }
-        div.stButton > button:first-child { background-color: #F5A623; color: #FFFFFF !important; border: none; font-weight: bold; width: 100%; }
-        div.stButton > button:first-child:hover { background-color: #E09612; }
+        
+        /* Contenedor central (tarjeta crema) */
+        div[data-testid="stForm"] {
+            background-color: #F8F5EE !important;
+            padding: 40px 30px !important;
+            border-radius: 20px !important;
+            box-shadow: 0px 15px 40px rgba(0,0,0,0.6) !important;
+            border: none !important;
+        }
+        
+        /* Textos dentro del cuadro crema */
+        div[data-testid="stForm"] p, div[data-testid="stForm"] label, div[data-testid="stForm"] div {
+            color: #091D3E !important;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif !important;
+        }
+        
+        /* Botón Iniciar Sesión */
+        div.stButton > button:first-child {
+            background-color: #122B4D !important;
+            color: #FFFFFF !important;
+            border: none !important;
+            border-radius: 8px !important;
+            padding: 12px 0px !important;
+            font-weight: bold !important;
+            font-size: 16px !important;
+            width: 100% !important;
+            margin-top: 5px !important;
+        }
+        div.stButton > button:first-child:hover {
+            background-color: #1C447A !important;
+        }
+        
+        /* Estilos para los campos de texto */
+        input {
+            background-color: #FFFFFF !important;
+            border: 1px solid #D6D2C4 !important;
+            border-radius: 8px !important;
+            color: #091D3E !important;
+            padding-left: 10px !important;
+        }
     </style>
     """, unsafe_allow_html=True)
 
+    # Columnas para centrar la tarjeta en la pantalla
     col1, col2, col3 = st.columns([1, 1.2, 1])
+    
     with col2:
-        if os.path.exists("logo_banco.png"):
-            col_l1, col_l2, col_l3 = st.columns([1, 1, 1])
-            with col_l2: st.image("logo_banco.png", use_container_width=True)
-        else:
-            st.markdown("<h1 style='text-align: center; color: #FFFFFF !important;'>🏦 Banco de la Familia</h1>", unsafe_allow_html=True)
-            
+        st.write("<br><br>", unsafe_allow_html=True)
+        
         with st.form("login_form"):
-            user_input = st.text_input("Usuario")
-            pwd_input = st.text_input("Contraseña", type="password")
+            
+            # Espacio dinámico para el Logo
+            if os.path.exists("logo_banco.png"):
+                col_l1, col_l2, col_l3 = st.columns([1, 1.5, 1])
+                with col_l2: st.image("logo_banco.png", use_container_width=True)
+            else:
+                st.markdown("<h2 style='text-align: center; color: #091D3E !important;'>🏦 Banco Familiar</h2>", unsafe_allow_html=True)
+            
+            st.write("<br>", unsafe_allow_html=True)
+            
+            # Campos de texto con iconos
+            user_input = st.text_input("👤 Nombre de Usuario")
+            pwd_input = st.text_input("🔒 Contraseña", type="password")
+            
+            # Checkbox visual
+            st.checkbox("Recordarme")
+            
             st.write("")
-            if st.form_submit_button("INGRESAR AL SISTEMA"):
+            submit_btn = st.form_submit_button("Iniciar Sesión")
+            
+            # Elementos decorativos inferiores (Similares a la imagen)
+            st.markdown("""
+            <div style='text-align: center; margin-top: 15px;'>
+                <p style='color: #1A5632 !important; font-size: 13px; margin-bottom: 5px;'>¿Olvidó su contraseña?</p>
+                <p style='font-size: 13px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
+                <hr style='border: 0.5px solid #E0DCD0; margin: 15px 0;'>
+                <p style='font-size: 13px; margin-bottom: 0;'>
+                    <span style='font-size: 18px;'>📞</span> Servicio al Cliente:<br>
+                    <b>1800-GUZMAN</b>
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Proceso de validación al presionar el botón
+            if submit_btn:
                 user_clean = clean_text(user_input)
                 pwd_clean = clean_text(pwd_input)
                 usuario_db = fetch_data("SELECT id, rol, socio_id FROM usuarios WHERE username=? AND password=?", (user_clean, pwd_clean))
@@ -202,25 +262,34 @@ if not st.session_state['logged_in']:
                     st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': usuario_db[0][1], 'socio_id': usuario_db[0][2]})
                     registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {usuario_db[0][1]}")
                     st.rerun()
-                else: st.error("Credenciales incorrectas.")
-                    
+                else: 
+                    st.error("Credenciales incorrectas.")
+                
+        # Pie de página y créditos del desarrollador adaptados al fondo oscuro
         st.markdown("""
-        <div style='text-align: center; margin-top: 20px; color: #8892B0; font-size: 13px; font-family: sans-serif;'>
+        <div style='text-align: center; margin-top: 20px; color: #7388A3; font-size: 13px; font-family: sans-serif;'>
             © 2026 Banco de la Familia Guzmán.<br>
             Desarrollado por <b>Patricio Guzmán</b><br>
             Todos los derechos reservados.
         </div>
         """, unsafe_allow_html=True)
+        
     st.stop()
 
+# ==========================================
+# INTERIOR DEL SISTEMA (DASHBOARD)
+# ==========================================
 st.markdown("""
 <style>
-    .stApp { background-color: #F4F8FB !important; overflow: auto !important; }
+    .stApp { background: #F4F8FB !important; overflow: auto !important; }
     h1, h2, h3 { color: #1F4E78 !important; font-family: 'Helvetica Neue', sans-serif; }
     div[data-testid="metric-container"] { background-color: #FFFFFF; border: 1px solid #E2E8F0; padding: 15px; border-radius: 10px; border-left: 5px solid #1F4E78; }
     div.stButton > button:first-child { background-color: #1F4E78; color: white; border: none; font-weight: 600; }
     div.stButton > button:first-child:hover { background-color: #153654; color: white; }
     [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
+    [data-testid="stSidebar"] img { max-width: 130px !important; margin: 0 auto !important; display: block; background-color: transparent !important; }
+    [data-testid="stSidebar"] { overflow: hidden !important; }
+    [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -456,7 +525,6 @@ if st.session_state['rol'] == 'Administrador':
         with tab_cobrar:
             prestamos_vig = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
             if not prestamos_vig.empty:
-                # Modificación: Mostrar el monto en la lista desplegable
                 opciones = prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'] + " - Capital Original: $" + prestamos_vig['CAPITAL_ORIGINAL'].astype(str)
                 p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", opciones)
                 
@@ -471,7 +539,6 @@ if st.session_state['rol'] == 'Administrador':
                 
                 st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
                 
-                # Modificación: Fuera de un st.form para permitir reactividad (Suma en vivo)
                 st.write("### DETALLE DE PAGO")
                 col_p1, col_p2 = st.columns(2)
                 with col_p1: 
@@ -479,7 +546,6 @@ if st.session_state['rol'] == 'Administrador':
                 with col_p2: 
                     pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
                 
-                # Suma dinámica en vivo
                 total_a_pagar = pago_cap + pago_int
                 st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
                 
@@ -496,7 +562,6 @@ if st.session_state['rol'] == 'Administrador':
             if 'ultimo_recibo_pago' in st.session_state: 
                 st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
         
-        # NUEVA PESTAÑA: REPORTE DE VIGENTES
         with tab_reporte:
             st.write("### REPORTE OFICIAL DE CRÉDITOS VIGENTES")
             df_activos = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
