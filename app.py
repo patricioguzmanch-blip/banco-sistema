@@ -98,24 +98,19 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# MOTOR DE COMPROBANTES TIPO IMAGEN (PNG) CON LOGO
+# MOTOR DE COMPROBANTES TIPO IMAGEN (PNG) TRANSACCIONALES
 # ==========================================
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
-    # Calculamos el alto de la imagen en base a los detalles
     alto = 380 + (len(detalles) * 45)
-    
-    # Intentamos cargar el logo para aumentar el espacio si existe
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            # Redimensionar el logo (máximo 140x140 px)
             logo_img.thumbnail((140, 140))
             logo_height = logo_img.height + 20
             alto += logo_height
-        except:
-            pass
+        except: pass
             
     img = Image.new('RGB', (600, alto), color='#F8F5EE')
     d = ImageDraw.Draw(img)
@@ -143,8 +138,6 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
         d.text((x, y), text, font=font, fill=fill)
 
     y_pos = 30
-    
-    # Si hay logo, lo pegamos centrado arriba
     if logo_img:
         logo_x = int((600 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
@@ -172,7 +165,7 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
     
     y_pos += 25
     for key, val in detalles.items():
-        is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key or "SALDO" in key or "DISPONIBLE" in key
+        is_total = "TOTAL" in key or "MONTO" in key or "ESTADO" in key or "SALDO" in key
         f_k = f_bold if is_total else f_sub
         f_v = f_title if is_total else f_text
         color = '#091D3E' if is_total else '#333333'
@@ -190,6 +183,110 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
+
+# ==========================================
+# MOTOR DE COMPROBANTES TIPO IMAGEN (PNG) PARA DASHBOARD (TABLA)
+# ==========================================
+def generar_imagen_dashboard(detalles):
+    alto_filas = len(detalles) * 55
+    alto_total = 260 + alto_filas + 80
+    
+    logo_img = None
+    logo_height = 0
+    if os.path.exists("logo_banco.png"):
+        try:
+            logo_img = Image.open("logo_banco.png").convert("RGBA")
+            logo_img.thumbnail((140, 140))
+            logo_height = logo_img.height + 20
+            alto_total += logo_height
+        except: pass
+
+    img = Image.new('RGB', (650, alto_total), color='#F8F5EE')
+    d = ImageDraw.Draw(img)
+
+    try:
+        f_title = ImageFont.truetype("arialbd.ttf", 28)
+        f_sub = ImageFont.truetype("arial.ttf", 20)
+        f_bold = ImageFont.truetype("arialbd.ttf", 22)
+        f_text = ImageFont.truetype("arial.ttf", 22)
+        f_small = ImageFont.truetype("arial.ttf", 16)
+    except:
+        f_title = ImageFont.load_default()
+        f_sub = ImageFont.load_default()
+        f_bold = ImageFont.load_default()
+        f_text = ImageFont.load_default()
+        f_small = ImageFont.load_default()
+
+    def get_text_width(text, font):
+        try: return d.textlength(text, font=font)
+        except: return font.getbbox(text)[2] if hasattr(font, 'getbbox') else font.getsize(text)[0]
+
+    def draw_centered(y, text, font, fill):
+        w = get_text_width(text, font)
+        x = (650 - w) / 2
+        d.text((x, y), text, font=font, fill=fill)
+
+    y_pos = 40
+    if logo_img:
+        logo_x = int((650 - logo_img.width) / 2)
+        img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
+        y_pos += logo_height
+
+    draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
+    y_pos += 45
+    draw_centered(y_pos, "RESUMEN FINANCIERO", f_bold, '#122B4D')
+    y_pos += 35
+    draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
+    
+    y_pos += 50
+    
+    # Dibujar la cabecera de la tabla
+    d.rectangle([40, y_pos, 610, y_pos + 45], fill='#122B4D')
+    d.text((60, y_pos + 10), "CONCEPTO", font=f_bold, fill='#FFFFFF')
+    w_monto = get_text_width("MONTO", f_bold)
+    d.text((590 - w_monto, y_pos + 10), "MONTO", font=f_bold, fill='#FFFFFF')
+    
+    y_pos += 45
+
+    # Dibujar las filas de la tabla dinámicamente
+    for index, (key, val) in enumerate(detalles.items()):
+        
+        # Lógica de colores y fuentes para la fila de disponible y saldo
+        if key == "Disponible para prestamos":
+            bg_color = "#1F4E78" # Azul profundo
+            text_color = "#FFFFFF" # Letras blancas
+            font_k = f_bold
+            font_v = f_bold
+        elif "CAJA" in key:
+            bg_color = "#E2E8F0"
+            text_color = "#091D3E"
+            font_k = f_bold
+            font_v = f_bold
+        else:
+            bg_color = "#FFFFFF" if index % 2 == 0 else "#F0F4F8"
+            text_color = "#333333"
+            font_k = f_text
+            font_v = f_text
+
+        # Dibujar celda de la fila
+        d.rectangle([40, y_pos, 610, y_pos + 55], fill=bg_color, outline="#CCCCCC", width=1)
+        
+        # Texto del Concepto (Izquierda)
+        d.text((60, y_pos + 15), key, font=font_k, fill=text_color)
+        
+        # Texto del Monto (Derecha)
+        w_val = get_text_width(str(val), font_v)
+        d.text((590 - w_val, y_pos + 15), str(val), font=font_v, fill=text_color)
+        
+        y_pos += 55
+
+    y_pos += 30
+    draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
+    
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
 
 # ==========================================
 # INICIALIZACIÓN Y CONFIGURACIÓN PÁGINA
@@ -510,7 +607,7 @@ if st.session_state['rol'] == 'Administrador':
             add_row("INTERESES GANADOS:", f"${t_int_gan:,.2f}", True)
             add_row("TOTAL EGRESOS (GASTOS):", f"${t_egr_ex:,.2f}", False)
             add_row("CREDITOS VIGENTES (EN CALLE):", f"${cap_calle:,.2f}", True)
-            add_row("DISPONIBLE PARA PRESTAR:", f"${disponible:,.2f}", False)
+            add_row("DISPONIBLE PARA PRESTAMOS:", f"${disponible:,.2f}", False)
             pdf.ln(5)
             pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
             pdf.cell(100, 12, "SALDO ACTUAL EN CAJA:", border=0, fill=True)
@@ -526,10 +623,10 @@ if st.session_state['rol'] == 'Administrador':
                 "INTERESES GANADOS": f"${t_int_gan:,.2f}",
                 "TOTAL EGRESOS": f"${t_egr_ex:,.2f}",
                 "CREDITOS VIGENTES": f"${cap_calle:,.2f}",
-                "DISPONIBLE PRESTAMOS": f"${disponible:,.2f}",
+                "Disponible para prestamos": f"${disponible:,.2f}",
                 "SALDO EN CAJA": f"${saldo_caja:,.2f}"
             }
-            return generar_voucher_imagen("RESUMEN FINANCIERO", f"RF-{hoy_dt.strftime('%d%H%M')}", "SISTEMA CENTRAL", detalles_resumen)
+            return generar_imagen_dashboard(detalles_resumen)
 
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
