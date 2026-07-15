@@ -159,7 +159,7 @@ if 'logged_in' not in st.session_state:
     st.session_state.update({'logged_in': False, 'username': None, 'rol': None, 'socio_id': None})
 
 # ==========================================
-# DISEÑO COMPACTO Y SIMÉTRICO DE LOGIN
+# DISEÑO INTERACTIVO DE LOGIN Y RECUPERACIÓN
 # ==========================================
 if not st.session_state['logged_in']:
     st.markdown("""
@@ -186,7 +186,17 @@ if not st.session_state['logged_in']:
             margin-bottom: -10px !important;
         }
         
-        div.stButton > button:first-child {
+        input {
+            background-color: #FFFFFF !important;
+            border: 1px solid #D6D2C4 !important;
+            border-radius: 6px !important;
+            color: #091D3E !important;
+            padding-left: 10px !important;
+            font-size: 14px !important;
+        }
+
+        /* BOTÓN PRIMARIO (Iniciar Sesión / Guardar) */
+        button[kind="primaryFormSubmit"], button[kind="primary"] {
             background-color: #122B4D !important;
             color: #FFFFFF !important;
             border: none !important;
@@ -197,17 +207,26 @@ if not st.session_state['logged_in']:
             width: 100% !important;
             margin-top: 5px !important;
         }
-        div.stButton > button:first-child:hover {
+        button[kind="primaryFormSubmit"]:hover, button[kind="primary"]:hover {
             background-color: #1C447A !important;
         }
         
-        input {
-            background-color: #FFFFFF !important;
-            border: 1px solid #D6D2C4 !important;
-            border-radius: 6px !important;
-            color: #091D3E !important;
-            padding-left: 10px !important;
-            font-size: 14px !important;
+        /* BOTÓN SECUNDARIO INVISIBLE (Recuperar clave / Volver) */
+        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
+            background-color: transparent !important;
+            color: #1A5632 !important;
+            border: none !important;
+            box-shadow: none !important;
+            padding: 0px !important;
+            font-size: 12px !important;
+            width: 100% !important;
+            margin-top: 2px !important;
+            min-height: 20px !important;
+        }
+        button[kind="secondaryFormSubmit"]:hover, button[kind="secondary"]:hover {
+            text-decoration: underline !important;
+            color: #122B4D !important;
+            background-color: transparent !important;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -215,43 +234,82 @@ if not st.session_state['logged_in']:
     col1, col2, col3 = st.columns([1.5, 1, 1.5])
     
     with col2:
-        with st.form("login_form"):
-            
-            if os.path.exists("logo_banco.png"):
-                # Se ajustan proporciones (1, 1.8, 1) para dar mucho más espacio nativo al logotipo
-                col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
-                with col_l2: st.image("logo_banco.png", use_container_width=True)
-            else:
-                st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h3>", unsafe_allow_html=True)
-            
-            user_input = st.text_input("👤 Nombre de Usuario")
-            pwd_input = st.text_input("🔒 Contraseña", type="password")
-            
-            st.checkbox("Recordarme")
-            submit_btn = st.form_submit_button("Iniciar Sesión")
-            
-            st.markdown("""
-            <div style='text-align: center; margin-top: 10px; line-height: 1.3;'>
-                <p style='color: #1A5632 !important; font-size: 12px; margin-bottom: 2px;'>¿Olvidó su contraseña?</p>
-                <p style='font-size: 12px; margin-bottom: 5px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
-                <hr style='border: 0.5px solid #E0DCD0; margin: 10px 0;'>
-                <p style='font-size: 11px; margin-bottom: 0;'>
-                    <span style='font-size: 14px;'>📞</span> Servicio al Cliente:<br>
-                    <b>1800-GUZMAN</b>
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if submit_btn:
-                user_clean = clean_text(user_input)
-                pwd_clean = clean_text(pwd_input)
-                usuario_db = fetch_data("SELECT id, rol, socio_id FROM usuarios WHERE username=? AND password=?", (user_clean, pwd_clean))
-                if usuario_db:
-                    st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': usuario_db[0][1], 'socio_id': usuario_db[0][2]})
-                    registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {usuario_db[0][1]}")
+        # PANTALLA DE RECUPERACIÓN DE CONTRASEÑA
+        if st.session_state.get('show_reset', False):
+            with st.form("reset_form"):
+                st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 5px;'>🔄 Nueva Contraseña</h3>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; font-size: 13px; line-height: 1.2;'>Solo disponible para <b>Socios</b> registrados. Ingrese su cédula para validar su identidad.</p>", unsafe_allow_html=True)
+                
+                ced_input = st.text_input("👤 Número de Cédula")
+                pwd_new = st.text_input("🔒 Escriba su Nueva Contraseña", type="password")
+                
+                btn_save = st.form_submit_button("Guardar Nueva Contraseña", type="primary")
+                btn_back = st.form_submit_button("⬅️ Volver al Inicio de Sesión", type="secondary")
+                
+                if btn_back:
+                    st.session_state['show_reset'] = False
                     st.rerun()
-                else: 
-                    st.error("Credenciales incorrectas.")
+                    
+                if btn_save:
+                    c_ced = clean_text(ced_input)
+                    c_pwd = clean_text(pwd_new)
+                    
+                    if c_ced and c_pwd:
+                        # Se busca ESTRICTAMENTE si la cédula existe y si su rol es SOCIO
+                        user_data = fetch_data("SELECT id FROM usuarios WHERE username=%s AND rol='SOCIO'", (c_ced,))
+                        if user_data:
+                            run_query("UPDATE usuarios SET password=%s WHERE id=%s", (c_pwd, user_data[0][0]))
+                            registrar_bitacora("RECUPERACION CLAVE", f"El socio CI {c_ced} actualizó su contraseña desde el panel externo.")
+                            st.success("✅ ¡Clave actualizada exitosamente! Puede usar el botón 'Volver' para entrar al sistema.")
+                        else:
+                            st.error("❌ Acción denegada. La cédula no existe o no corresponde a un Socio.")
+                    else:
+                        st.warning("⚠️ Por favor, llene ambos campos.")
+
+        # PANTALLA NORMAL DE INICIO DE SESIÓN
+        else:
+            with st.form("login_form"):
+                
+                if os.path.exists("logo_banco.png"):
+                    col_l1, col_l2, col_l3 = st.columns([1, 1.8, 1])
+                    with col_l2: st.image("logo_banco.png", use_container_width=True)
+                else:
+                    st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h3>", unsafe_allow_html=True)
+                
+                user_input = st.text_input("👤 Nombre de Usuario")
+                pwd_input = st.text_input("🔒 Contraseña", type="password")
+                
+                st.checkbox("Recordarme")
+                submit_btn = st.form_submit_button("Iniciar Sesión", type="primary")
+                
+                # El botón de Olvidó Contraseña se renderiza como texto invisible gracias al CSS
+                forgot_btn = st.form_submit_button("¿Olvidó su contraseña?", type="secondary")
+                
+                st.markdown("""
+                <div style='text-align: center; line-height: 1.3;'>
+                    <p style='font-size: 12px; margin-bottom: 5px; margin-top: 5px;'>¿No tiene cuenta? <span style='color: #1A5632 !important; font-weight: bold;'>Regístrese</span></p>
+                    <hr style='border: 0.5px solid #E0DCD0; margin: 10px 0;'>
+                    <p style='font-size: 11px; margin-bottom: 0;'>
+                        <span style='font-size: 14px;'>📞</span> Servicio al Cliente:<br>
+                        <b>1800-GUZMAN</b>
+                    </p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                if forgot_btn:
+                    st.session_state['show_reset'] = True
+                    st.rerun()
+                
+                if submit_btn:
+                    user_clean = clean_text(user_input)
+                    pwd_clean = clean_text(pwd_input)
+                    usuario_db = fetch_data("SELECT id, rol, socio_id FROM usuarios WHERE username=%s AND password=%s", (user_clean, pwd_clean))
+                    if usuario_db:
+                        st.session_state.update({'logged_in': True, 'username': user_clean, 'rol': usuario_db[0][1], 'socio_id': usuario_db[0][2]})
+                        registrar_bitacora("INICIO DE SESION", f"Acceso exitoso al sistema como {usuario_db[0][1]}")
+                        st.rerun()
+                    else: 
+                        st.error("Credenciales incorrectas.")
                 
         st.markdown("""
         <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
@@ -306,7 +364,7 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
         else: meses_a_cobrar = max(1, meses_calendario)
     else: meses_a_cobrar = max(1, meses_calendario)
     interes_total_generado = capital_original * 0.10 * meses_a_cobrar
-    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = ?", (prestamo_id,), returning=True) or 0.0
+    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
     return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
 
 if st.session_state['rol'] == 'Administrador':
