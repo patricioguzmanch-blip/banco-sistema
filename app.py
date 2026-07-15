@@ -227,7 +227,6 @@ if not st.session_state['logged_in']:
             background-color: transparent !important;
         }
 
-        /* Ajuste nativo para que en celulares la tarjeta no se vea aplastada */
         @media (max-width: 768px) {
             .block-container { padding-top: 2rem !important; }
             div[data-testid="stForm"] { padding: 25px 20px 20px 20px !important; }
@@ -272,7 +271,6 @@ if not st.session_state['logged_in']:
             with st.form("login_form"):
                 
                 if os.path.exists("logo_banco.png"):
-                    # Le dimos mucho más peso a la columna central (3.0) para que la imagen crezca
                     col_l1, col_l2, col_l3 = st.columns([1, 3.0, 1])
                     with col_l2: st.image("logo_banco.png", use_container_width=True)
                 else:
@@ -298,7 +296,6 @@ if not st.session_state['logged_in']:
                         u_socio_id = usuario_db[0][2]
                         d_name = user_clean
                         
-                        # Buscador inteligente de los dos primeros nombres
                         if u_rol == 'SOCIO' and u_socio_id:
                             s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (u_socio_id,))
                             if s_data:
@@ -333,27 +330,69 @@ if not st.session_state['logged_in']:
 # ==========================================
 st.markdown("""
 <style>
-    .stApp { background: #F4F8FB !important; overflow: auto !important; }
-    h1, h2, h3 { color: #1F4E78 !important; font-family: 'Helvetica Neue', sans-serif; }
-    div[data-testid="metric-container"] { background-color: #FFFFFF; border: 1px solid #E2E8F0; padding: 15px; border-radius: 10px; border-left: 5px solid #1F4E78; }
-    div.stButton > button:first-child { background-color: #1F4E78; color: white; border: none; font-weight: 600; }
-    div.stButton > button:first-child:hover { background-color: #153654; color: white; }
-    [data-testid="stSidebar"] { background-color: #FFFFFF; border-right: 1px solid #E2E8F0; }
+    /* Tipografía General */
+    html, body, [class*="css"] {
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+    }
+
+    /* Colorimetría Panel Derecho (Principal) */
+    .stApp { background: #F0F4F8 !important; overflow: auto !important; }
     
-    /* Configuración del logotipo interno (mucho más grande) */
-    [data-testid="stSidebar"] img { max-width: 240px !important; margin: 0 auto !important; display: block; background-color: transparent !important; padding-bottom: 20px; }
+    /* Jerarquía Tipográfica Principal */
+    h1 { color: #091D3E !important; font-size: 26px !important; font-weight: 700 !important; margin-bottom: 20px !important;}
+    h2 { color: #122B4D !important; font-size: 20px !important; font-weight: 600 !important; margin-bottom: 15px !important;}
+    h3 { color: #1F4E78 !important; font-size: 16px !important; font-weight: 600 !important; }
+    
+    /* Contenedores Blancos (Tarjetas/Métricas) */
+    div[data-testid="metric-container"], div[data-testid="stForm"] { 
+        background-color: #FFFFFF !important; 
+        border: 1px solid #E2E8F0 !important; 
+        padding: 15px 20px !important; 
+        border-radius: 12px !important; 
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.03) !important;
+    }
+    div[data-testid="metric-container"] { border-left: 5px solid #1F4E78 !important; }
+
+    /* Estilo Armónico de Botones Primarios */
+    div.stButton > button:first-child { 
+        background-color: #122B4D !important; 
+        color: #FFFFFF !important; 
+        border: none !important; 
+        font-weight: 600 !important; 
+        border-radius: 8px !important;
+        padding: 8px 15px !important;
+        font-size: 14px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:first-child:hover { 
+        background-color: #1C447A !important; 
+        transform: translateY(-1px);
+        box-shadow: 0px 4px 10px rgba(0,0,0,0.15) !important;
+    }
+
+    /* Colorimetría Panel Izquierdo (Sidebar) */
+    [data-testid="stSidebar"] { 
+        background-color: #F8F5EE !important; 
+        border-right: 1px solid #D6D2C4 !important; 
+    }
+    [data-testid="stSidebar"] img { 
+        max-width: 180px !important; 
+        margin: 0 auto !important; 
+        display: block; 
+        background-color: transparent !important; 
+        padding-bottom: 15px; 
+    }
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
 
-    /* REGLAS PARA TIPO APLICACIÓN MÓVIL */
+    /* DISEÑO RESPONSIVO TIPO APLICACIÓN MÓVIL */
     @media (max-width: 768px) {
         .block-container { padding: 1.5rem 1rem !important; }
-        h1 { font-size: 1.5rem !important; }
-        h2 { font-size: 1.3rem !important; }
-        h3 { font-size: 1.1rem !important; }
+        h1 { font-size: 22px !important; }
+        h2 { font-size: 18px !important; }
         [data-testid="stSidebar"] { width: 100% !important; }
         [data-testid="stTabs"] { width: 100% !important; }
-        button { width: 100% !important; margin-bottom: 10px !important; }
+        div.stButton > button:first-child { width: 100% !important; margin-bottom: 10px !important; padding: 12px 15px !important;}
         [data-testid="stDataFrame"] { width: 100% !important; overflow-x: auto; }
     }
 </style>
@@ -376,9 +415,9 @@ else:
 nombre_pantalla = st.session_state.get('display_name', 'Usuario')
 
 st.sidebar.markdown(f"""
-<div style='text-align: center; margin-bottom: 20px;'>
-    <h3 style='color: #1F4E78; font-size: 18px; margin-bottom: 5px;'>👋 {saludo_tiempo},<br><b>{nombre_pantalla}</b></h3>
-    <p style='font-size: 12px; color: #7388A3; margin-top: 0;'>ROL: {clean_text(st.session_state['rol'])}</p>
+<div style='text-align: center; margin-bottom: 15px;'>
+    <h3 style='color: #091D3E; font-size: 18px; margin-bottom: 2px; font-weight: 700;'>👋 {saludo_tiempo},<br>{nombre_pantalla}</h3>
+    <p style='font-size: 12px; color: #7388A3; margin-top: 0; font-weight: 600; letter-spacing: 1px;'>ROL: {clean_text(st.session_state['rol'])}</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -808,7 +847,8 @@ elif st.session_state['rol'] == 'SOCIO':
         with tab_solicitar:
             with st.form("form_solicitar"):
                 monto_solicitado = st.number_input("MONTO REQUERIDO ($)", min_value=10.0, step=10.0)
-                tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)", "ESPECIAL (0% INTERES)"])
+                # Restricción aplicada: El socio ya no puede elegir crédito especial de 0%
+                tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)"])
                 st.write(""); 
                 if st.form_submit_button("RADICAR SOLICITUD DE CRÉDITO"):
                     run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (%s,%s,%s,%s,%s,%s)", (mi_id, monto_solicitado, monto_solicitado, clean_text(tipo_cred), 'SOLICITADO', hoy_str))
