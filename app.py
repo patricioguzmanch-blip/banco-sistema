@@ -169,9 +169,16 @@ if not st.session_state['logged_in']:
         }
         header { display: none !important; }
         
+        /* Contenedor más angosto y sin scroll */
+        .block-container { 
+            padding-top: 5vh !important; 
+            padding-bottom: 0 !important; 
+            max-width: 100% !important; 
+        }
+        
         div[data-testid="stForm"] {
             background-color: #F8F5EE !important;
-            padding: 35px 25px 25px 25px !important;
+            padding: 20px 25px 15px 25px !important;
             border-radius: 20px !important;
             box-shadow: 0px 10px 40px rgba(0,0,0,0.7) !important;
             border: none !important;
@@ -183,7 +190,7 @@ if not st.session_state['logged_in']:
         }
         
         div[data-testid="stForm"] .stTextInput {
-            margin-bottom: -5px !important;
+            margin-bottom: -15px !important;
         }
         
         input {
@@ -195,16 +202,21 @@ if not st.session_state['logged_in']:
             font-size: 14px !important;
         }
 
+        /* Botón centrado, más angosto y con letras blancas */
+        div.stButton {
+            text-align: center !important;
+        }
         button[kind="primaryFormSubmit"], button[kind="primary"] {
             background-color: #122B4D !important;
             color: #FFFFFF !important;
             border: none !important;
             border-radius: 8px !important;
-            padding: 10px 0px !important;
+            padding: 8px 0px !important;
             font-weight: bold !important;
-            font-size: 16px !important;
-            width: 100% !important;
-            margin-top: 10px !important;
+            font-size: 15px !important;
+            width: 70% !important;
+            margin: 5px auto 0px auto !important;
+            display: block !important;
         }
         button[kind="primaryFormSubmit"]:hover, button[kind="primary"]:hover {
             background-color: #1C447A !important;
@@ -216,9 +228,9 @@ if not st.session_state['logged_in']:
             border: none !important;
             box-shadow: none !important;
             padding: 0px !important;
-            font-size: 13px !important;
+            font-size: 12px !important;
             width: 100% !important;
-            margin-top: 5px !important;
+            margin-top: 0px !important;
             min-height: 20px !important;
         }
         button[kind="secondaryFormSubmit"]:hover, button[kind="secondary"]:hover {
@@ -230,23 +242,25 @@ if not st.session_state['logged_in']:
         @media (max-width: 768px) {
             .block-container { padding-top: 2rem !important; }
             div[data-testid="stForm"] { padding: 25px 20px 20px 20px !important; }
+            button[kind="primaryFormSubmit"], button[kind="primary"] { width: 100% !important; }
         }
     </style>
     """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    # Columnas [1.8, 1, 1.8] hacen que el formulario del centro sea más angosto
+    col1, col2, col3 = st.columns([1.8, 1, 1.8])
     
     with col2:
         if st.session_state.get('show_reset', False):
             with st.form("reset_form"):
                 st.markdown("<h3 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 5px;'>🔄 Nueva Contraseña</h3>", unsafe_allow_html=True)
-                st.markdown("<p style='text-align: center; font-size: 13px; line-height: 1.2;'>Solo disponible para <b>Socios</b> registrados. Ingrese su cédula para validar su identidad.</p>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; font-size: 13px; line-height: 1.2;'>Solo disponible para <b>Socios</b> registrados. Ingrese su cédula.</p>", unsafe_allow_html=True)
                 
                 ced_input = st.text_input("👤 Número de Cédula")
-                pwd_new = st.text_input("🔒 Escriba su Nueva Contraseña", type="password")
+                pwd_new = st.text_input("🔒 Nueva Contraseña", type="password")
                 
-                btn_save = st.form_submit_button("Guardar Nueva Contraseña", type="primary")
-                btn_back = st.form_submit_button("⬅️ Volver al Inicio de Sesión", type="secondary")
+                btn_save = st.form_submit_button("Guardar Contraseña", type="primary")
+                btn_back = st.form_submit_button("⬅️ Volver al Inicio", type="secondary")
                 
                 if btn_back:
                     st.session_state['show_reset'] = False
@@ -260,18 +274,17 @@ if not st.session_state['logged_in']:
                         user_data = fetch_data("SELECT id FROM usuarios WHERE username=%s AND rol='SOCIO'", (c_ced,))
                         if user_data:
                             run_query("UPDATE usuarios SET password=%s WHERE id=%s", (c_pwd, user_data[0][0]))
-                            registrar_bitacora("RECUPERACION CLAVE", f"El socio CI {c_ced} actualizó su contraseña desde el panel externo.")
-                            st.success("✅ ¡Clave actualizada exitosamente! Puede usar el botón 'Volver' para entrar al sistema.")
+                            registrar_bitacora("RECUPERACION CLAVE", f"El socio CI {c_ced} actualizó su contraseña.")
+                            st.success("✅ ¡Clave actualizada!")
                         else:
-                            st.error("❌ Acción denegada. La cédula no existe o no corresponde a un Socio.")
+                            st.error("❌ La cédula no existe o no es Socio.")
                     else:
-                        st.warning("⚠️ Por favor, llene ambos campos.")
+                        st.warning("⚠️ Llene ambos campos.")
 
         else:
             with st.form("login_form"):
-                
                 if os.path.exists("logo_banco.png"):
-                    col_l1, col_l2, col_l3 = st.columns([1, 3.0, 1])
+                    col_l1, col_l2, col_l3 = st.columns([1, 4.0, 1])
                     with col_l2: st.image("logo_banco.png", use_container_width=True)
                 else:
                     st.markdown("<h2 style='text-align: center; color: #091D3E !important; margin-top: 0; margin-bottom: 10px;'>🏦 Banco Familiar</h2>", unsafe_allow_html=True)
@@ -317,7 +330,7 @@ if not st.session_state['logged_in']:
                         st.error("Credenciales incorrectas.")
                 
         st.markdown("""
-        <div style='text-align: center; margin-top: 25px; color: #7388A3; font-size: 12px; font-family: sans-serif;'>
+        <div style='text-align: center; margin-top: 15px; color: #7388A3; font-size: 11px; font-family: sans-serif;'>
             © 2026 Banco de la Familia Guzmán.<br>
             Desarrollado por <b>Patricio Guzmán</b>
         </div>
@@ -595,16 +608,33 @@ if st.session_state['rol'] == 'Administrador':
         if not socios.empty:
             with st.form("form_trx"):
                 col_tx1, col_tx2 = st.columns(2)
-                with col_tx1: socio_id = st.selectbox("SELECCIONAR SOCIO", socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos']); tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
-                with col_tx2: monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0); st.write(""); submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
+                with col_tx1: 
+                    # Caja configurada para obligar a buscar/escribir el nombre o cedula.
+                    socio_id = st.selectbox(
+                        "🔍 BUSCAR Y SELECCIONAR SOCIO", 
+                        socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
+                        index=None,
+                        placeholder="✍️ Clic aquí para escribir el nombre..."
+                    )
+                    tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
+                with col_tx2: 
+                    monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0)
+                    st.write("")
+                    submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
+                
                 if submit_tx:
-                    s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
-                    tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
-                    registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
-                    pdf_bytes = generar_comprobante("COMPROBANTE DE TRANSACCION", f"TX-{tx_id}", nombre_socio, {"TIPO DE MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
-                    st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
-                    st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
-            if 'ultimo_recibo_tx' in st.session_state: st.download_button("📥 DESCARGAR COMPROBANTE EN PDF", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf")
+                    if not socio_id:
+                        st.error("⚠️ Por favor, busque y seleccione un socio primero.")
+                    else:
+                        s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
+                        tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
+                        registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
+                        pdf_bytes = generar_comprobante("COMPROBANTE DE TRANSACCION", f"TX-{tx_id}", nombre_socio, {"TIPO DE MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
+                        st.session_state['ultimo_recibo_tx'] = pdf_bytes; st.session_state['nombre_recibo_tx'] = f"Comprobante_{clean_text(tipo)}_{s_id}.pdf"
+                        st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
+            
+            if 'ultimo_recibo_tx' in st.session_state: 
+                st.download_button("📥 DESCARGAR COMPROBANTE EN PDF", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="application/pdf")
 
     elif menu == "🤝 CRÉDITOS":
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
@@ -847,7 +877,6 @@ elif st.session_state['rol'] == 'SOCIO':
         with tab_solicitar:
             with st.form("form_solicitar"):
                 monto_solicitado = st.number_input("MONTO REQUERIDO ($)", min_value=10.0, step=10.0)
-                # Restricción aplicada: El socio ya no puede elegir crédito especial de 0%
                 tipo_cred = st.selectbox("MODALIDAD DE CRÉDITO", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)"])
                 st.write(""); 
                 if st.form_submit_button("RADICAR SOLICITUD DE CRÉDITO"):
