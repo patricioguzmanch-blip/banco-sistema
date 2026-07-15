@@ -169,7 +169,6 @@ if not st.session_state['logged_in']:
         }
         header { display: none !important; }
         
-        /* Contenedor más angosto y sin scroll */
         .block-container { 
             padding-top: 5vh !important; 
             padding-bottom: 0 !important; 
@@ -202,52 +201,54 @@ if not st.session_state['logged_in']:
             font-size: 14px !important;
         }
 
-        /* Botón centrado, más angosto y con letras blancas */
-        div.stButton {
-            text-align: center !important;
-        }
-        button[kind="primaryFormSubmit"], button[kind="primary"] {
+        /* Ajuste de Botones Login */
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"] {
             background-color: #122B4D !important;
-            color: #FFFFFF !important;
             border: none !important;
             border-radius: 8px !important;
-            padding: 8px 0px !important;
-            font-weight: bold !important;
-            font-size: 15px !important;
-            width: 70% !important;
-            margin: 5px auto 0px auto !important;
+            padding: 10px 0px !important;
+            width: 100% !important; 
+            margin-top: 5px !important;
             display: block !important;
         }
-        button[kind="primaryFormSubmit"]:hover, button[kind="primary"]:hover {
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"]:hover {
             background-color: #1C447A !important;
         }
         
-        button[kind="secondaryFormSubmit"], button[kind="secondary"] {
+        /* Forzando letras blancas en el boton principal */
+        div[data-testid="stForm"] button[kind="primaryFormSubmit"] p {
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            font-size: 16px !important;
+        }
+        
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] {
             background-color: transparent !important;
-            color: #1A5632 !important;
             border: none !important;
             box-shadow: none !important;
             padding: 0px !important;
-            font-size: 12px !important;
             width: 100% !important;
             margin-top: 0px !important;
             min-height: 20px !important;
         }
-        button[kind="secondaryFormSubmit"]:hover, button[kind="secondary"]:hover {
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"]:hover p {
             text-decoration: underline !important;
             color: #122B4D !important;
-            background-color: transparent !important;
+        }
+        
+        /* Forzando letras verdes en boton secundario */
+        div[data-testid="stForm"] button[kind="secondaryFormSubmit"] p {
+            color: #1A5632 !important;
+            font-size: 13px !important;
         }
 
         @media (max-width: 768px) {
             .block-container { padding-top: 2rem !important; }
             div[data-testid="stForm"] { padding: 25px 20px 20px 20px !important; }
-            button[kind="primaryFormSubmit"], button[kind="primary"] { width: 100% !important; }
         }
     </style>
     """, unsafe_allow_html=True)
 
-    # Columnas [1.8, 1, 1.8] hacen que el formulario del centro sea más angosto
     col1, col2, col3 = st.columns([1.8, 1, 1.8])
     
     with col2:
@@ -343,20 +344,14 @@ if not st.session_state['logged_in']:
 # ==========================================
 st.markdown("""
 <style>
-    /* Tipografía General */
     html, body, [class*="css"] {
         font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
     }
-
-    /* Colorimetría Panel Derecho (Principal) */
     .stApp { background: #F0F4F8 !important; overflow: auto !important; }
-    
-    /* Jerarquía Tipográfica Principal */
     h1 { color: #091D3E !important; font-size: 26px !important; font-weight: 700 !important; margin-bottom: 20px !important;}
     h2 { color: #122B4D !important; font-size: 20px !important; font-weight: 600 !important; margin-bottom: 15px !important;}
     h3 { color: #1F4E78 !important; font-size: 16px !important; font-weight: 600 !important; }
     
-    /* Contenedores Blancos (Tarjetas/Métricas) */
     div[data-testid="metric-container"], div[data-testid="stForm"] { 
         background-color: #FFFFFF !important; 
         border: 1px solid #E2E8F0 !important; 
@@ -366,7 +361,6 @@ st.markdown("""
     }
     div[data-testid="metric-container"] { border-left: 5px solid #1F4E78 !important; }
 
-    /* Estilo Armónico de Botones Primarios */
     div.stButton > button:first-child { 
         background-color: #122B4D !important; 
         color: #FFFFFF !important; 
@@ -383,7 +377,6 @@ st.markdown("""
         box-shadow: 0px 4px 10px rgba(0,0,0,0.15) !important;
     }
 
-    /* Colorimetría Panel Izquierdo (Sidebar) */
     [data-testid="stSidebar"] { 
         background-color: #F8F5EE !important; 
         border-right: 1px solid #D6D2C4 !important; 
@@ -398,7 +391,6 @@ st.markdown("""
     [data-testid="stSidebar"] { overflow: hidden !important; }
     [data-testid="stSidebarNav"] { overflow-y: hidden !important; }
 
-    /* DISEÑO RESPONSIVO TIPO APLICACIÓN MÓVIL */
     @media (max-width: 768px) {
         .block-container { padding: 1.5rem 1rem !important; }
         h1 { font-size: 22px !important; }
@@ -413,17 +405,13 @@ st.markdown("""
 
 if os.path.exists("logo_banco.png"): st.sidebar.image("logo_banco.png")
 
-# Reloj interno para el saludo dinámico
 hoy_dt = get_guayaquil_time()
 hoy_str = format_date(hoy_dt)
 hora = hoy_dt.hour
 
-if hora < 12:
-    saludo_tiempo = "Buenos días"
-elif hora < 18:
-    saludo_tiempo = "Buenas tardes"
-else:
-    saludo_tiempo = "Buenas noches"
+if hora < 12: saludo_tiempo = "Buenos días"
+elif hora < 18: saludo_tiempo = "Buenas tardes"
+else: saludo_tiempo = "Buenas noches"
 
 nombre_pantalla = st.session_state.get('display_name', 'Usuario')
 
@@ -455,6 +443,21 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
     interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
     return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
 
+def obtener_limites_prestamo():
+    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
+    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
+    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
+    
+    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
+    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
+    cap_calle = cap_pres - cap_dev
+    
+    base_calculo = t_dep + t_ing_ex + t_int_gan
+    limite_70 = base_calculo * 0.70
+    disponible = limite_70 - cap_calle
+    
+    return max(0.0, disponible), limite_70, cap_calle, base_calculo
+
 if st.session_state['rol'] == 'Administrador':
     menu = st.sidebar.radio("NAVEGACIÓN", ["🏢 INICIO Y DASHBOARD", "👥 SOCIOS", "💵 DEPÓSITOS Y RETIROS", "🤝 CRÉDITOS", "📊 INGRESOS Y EGRESOS", "⚙️ CONFIGURACIÓN", "📖 AUDITORÍA"])
     if st.sidebar.button("CERRAR SESIÓN"):
@@ -463,37 +466,33 @@ if st.session_state['rol'] == 'Administrador':
 
     if menu == "🏢 INICIO Y DASHBOARD":
         st.header("RESUMEN FINANCIERO DEL BANCO")
+        
         t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
         t_ret = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'RETIRO'", returning=True) or 0
         t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
         t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0
         t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
-        cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado != 'RECHAZADO'", returning=True) or 0
-        cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-        cap_calle = cap_pres - cap_dev
+        
+        disponible, limite_70, cap_calle, _ = obtener_limites_prestamo()
         saldo_caja = (t_dep - t_ret) + t_ing_ex - t_egr_ex + t_int_gan - cap_calle
 
         col1, col2, col3 = st.columns(3)
         col1.metric("TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
-        col2.metric("TOTAL RETIROS", f"${t_ret:,.2f}")
-        col3.metric("CRÉDITOS EN LA CALLE", f"${cap_calle:,.2f}")
-        col4, col5, col6 = st.columns(3)
-        col4.metric("INGRESOS EXTRAS", f"${t_ing_ex:,.2f}")
-        col5.metric("INTERESES GANADOS", f"${t_int_gan:,.2f}")
-        col6.metric("TOTAL EGRESOS", f"${t_egr_ex:,.2f}")
-        st.divider()
-        st.metric("💰 SALDO ACTUAL EN CAJA (EFECTIVO DISPONIBLE)", f"${saldo_caja:,.2f}")
+        col2.metric("INGRESOS EXTRAS", f"${t_ing_ex:,.2f}")
+        col3.metric("INTERESES GANADOS", f"${t_int_gan:,.2f}")
         
-        st.write("### 📈 Visualización de Activos")
-        if (saldo_caja + cap_calle) > 0 or (t_dep + t_ing_ex + t_int_gan) > 0:
-            col_g1, col_g2 = st.columns(2)
-            with col_g1:
-                fig_pie = px.pie(names=['Caja', 'Préstamos'], values=[max(0, saldo_caja), max(0, cap_calle)], color_discrete_sequence=['#1F4E78', '#38BDF8'], hole=0.4)
-                st.plotly_chart(fig_pie, use_container_width=True)
-            with col_g2:
-                fig_bar = px.bar(x=['Entrada', 'Salida'], y=[t_dep + t_ing_ex + t_int_gan, t_ret + t_egr_ex], color=['Entradas', 'Salidas'], color_discrete_map={'Entradas': '#10B981', 'Salidas': '#EF4444'})
-                st.plotly_chart(fig_bar, use_container_width=True)
-
+        col4, col5, col6 = st.columns(3)
+        col4.metric("TOTAL RETIROS", f"${t_ret:,.2f}")
+        col5.metric("TOTAL EGRESOS", f"${t_egr_ex:,.2f}")
+        col6.metric("💰 SALDO EN CAJA (EFECTIVO)", f"${saldo_caja:,.2f}")
+        
+        st.divider()
+        st.markdown("<h3 style='color:#1A5632 !important;'>📊 CONTROL DE CARTERA (REGLA 70%)</h3>", unsafe_allow_html=True)
+        col7, col8, col9 = st.columns(3)
+        col7.metric("LÍMITE TOTAL PRESTABLE (70%)", f"${limite_70:,.2f}")
+        col8.metric("CRÉDITOS VIGENTES EN CALLE", f"${cap_calle:,.2f}")
+        col9.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
+        
         st.write("---")
         def crear_pdf_resumen():
             pdf = BancoPDF()
@@ -514,6 +513,7 @@ if st.session_state['rol'] == 'Administrador':
             add_row("INTERESES GANADOS:", f"${t_int_gan:,.2f}", True)
             add_row("TOTAL EGRESOS (GASTOS):", f"${t_egr_ex:,.2f}", False)
             add_row("CREDITOS VIGENTES (EN CALLE):", f"${cap_calle:,.2f}", True)
+            add_row("DISPONIBLE PARA PRESTAR:", f"${disponible:,.2f}", False)
             pdf.ln(5)
             pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
             pdf.cell(100, 12, "SALDO ACTUAL EN CAJA:", border=0, fill=True)
@@ -609,7 +609,6 @@ if st.session_state['rol'] == 'Administrador':
             with st.form("form_trx"):
                 col_tx1, col_tx2 = st.columns(2)
                 with col_tx1: 
-                    # Caja configurada para obligar a buscar/escribir el nombre o cedula.
                     socio_id = st.selectbox(
                         "🔍 BUSCAR Y SELECCIONAR SOCIO", 
                         socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
@@ -643,6 +642,9 @@ if st.session_state['rol'] == 'Administrador':
         with tab_solicitudes:
             solicitudes = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.capital_original as "CAPITAL_ORIGINAL", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'SOLICITADO\'')
             if not solicitudes.empty:
+                disponible_prestamos, _, _, _ = obtener_limites_prestamo()
+                st.info(f"💰 **Fondos disponibles para nuevos créditos (Límite 70%):** ${disponible_prestamos:,.2f}")
+                
                 for _, row in solicitudes.iterrows():
                     st.info(f"**SOLICITUD PENDIENTE:** {row['nombres']} {row['apellidos']} solicita **${row['CAPITAL_ORIGINAL']}** bajo la modalidad **{row['TIPO_CREDITO']}**.")
                     col1, col2, col3 = st.columns([2, 1, 1])
@@ -650,9 +652,12 @@ if st.session_state['rol'] == 'Administrador':
                     with col2: 
                         st.write("<br>", unsafe_allow_html=True)
                         if st.button("✅ APROBAR", key=f"apr_{row['id']}", use_container_width=True):
-                            run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=%s WHERE id=%s", (format_date(f_otorga), row['id']))
-                            registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row['id']} por ${row['CAPITAL_ORIGINAL']} a {row['nombres']} {row['apellidos']}")
-                            st.rerun()
+                            if row['CAPITAL_ORIGINAL'] > disponible_prestamos:
+                                st.error("❌ No puedes aprobar este crédito. Supera el límite del 70% del dinero disponible.")
+                            else:
+                                run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=%s WHERE id=%s", (format_date(f_otorga), row['id']))
+                                registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row['id']} por ${row['CAPITAL_ORIGINAL']} a {row['nombres']} {row['apellidos']}")
+                                st.rerun()
                     with col3:
                         st.write("<br>", unsafe_allow_html=True)
                         if st.button("❌ RECHAZAR", key=f"rec_{row['id']}", use_container_width=True):
@@ -663,53 +668,73 @@ if st.session_state['rol'] == 'Administrador':
         with tab_otorgar:
             socios = get_dataframe("SELECT id, nombres, apellidos FROM socios")
             if not socios.empty:
+                disponible_prestamos, _, _, _ = obtener_limites_prestamo()
+                st.info(f"💰 **Fondos disponibles para nuevos créditos (Límite 70%):** ${disponible_prestamos:,.2f}")
+                
                 with st.form("form_credito_directo"):
                     col_cr1, col_cr2 = st.columns(2)
-                    with col_cr1: socio_cred = st.selectbox("SOCIO BENEFICIARIO", socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos']); capital = st.number_input("CAPITAL A PRESTAR ($)", min_value=1.0, step=100.0)
-                    with col_cr2: tipo_cred = st.selectbox("TIPO DE CONDICIÓN", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)", "ESPECIAL (0% INTERES)"]); fecha_ot = st.date_input("FECHA DE OTORGAMIENTO", value=hoy_dt.date())
+                    with col_cr1: 
+                        socio_cred = st.selectbox(
+                            "SOCIO BENEFICIARIO", 
+                            socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
+                            index=None, placeholder="✍️ Buscar socio..."
+                        )
+                        capital = st.number_input("CAPITAL A PRESTAR ($)", min_value=1.0, step=100.0)
+                    with col_cr2: 
+                        tipo_cred = st.selectbox("TIPO DE CONDICIÓN", ["NORMAL (10% MENSUAL)", "CORTO PLAZO (5 DIAS)", "ESPECIAL (0% INTERES)"])
+                        fecha_ot = st.date_input("FECHA DE OTORGAMIENTO", value=hoy_dt.date())
+                    
                     st.write(""); 
                     if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE"):
-                        s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
-                        run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
-                        registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}"); st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
+                        if not socio_cred:
+                            st.error("⚠️ Debe seleccionar un socio beneficiario.")
+                        elif capital > disponible_prestamos:
+                            st.error(f"❌ El monto solicitado (${capital:,.2f}) supera el límite de dinero prestable de ${disponible_prestamos:,.2f}.")
+                        else:
+                            s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
+                            run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
+                            registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}")
+                            st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
+                            st.rerun()
         
         with tab_cobrar:
             prestamos_vig = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
             if not prestamos_vig.empty:
                 opciones = prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'] + " - Capital Original: $" + prestamos_vig['CAPITAL_ORIGINAL'].astype(str)
-                p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", opciones)
+                p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", opciones, index=None, placeholder="✍️ Buscar préstamo por socio...")
                 
-                p_id = int(p_sel_str.split(" - ")[0])
-                nombre_socio = p_sel_str.split(" - ")[1]
-                p_data = prestamos_vig[prestamos_vig['id'] == p_id].iloc[0]
+                if p_sel_str:
+                    p_id = int(p_sel_str.split(" - ")[0])
+                    nombre_socio = p_sel_str.split(" - ")[1]
+                    p_data = prestamos_vig[prestamos_vig['id'] == p_id].iloc[0]
+                    
+                    col_f1, col_f2 = st.columns([1, 2])
+                    with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
+                    interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], fecha_cobro)
+                    with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
+                    
+                    st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
+                    
+                    st.write("### DETALLE DE PAGO")
+                    col_p1, col_p2 = st.columns(2)
+                    with col_p1: 
+                        pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
+                    with col_p2: 
+                        pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
+                    
+                    total_a_pagar = pago_cap + pago_int
+                    st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
+                    
+                    if st.button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
+                        run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
+                        pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                        registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
+                        nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                        if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
+                        else: st.success("PAGO APLICADO CORRECTAMENTE.")
+                        pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
+                        st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
                 
-                col_f1, col_f2 = st.columns([1, 2])
-                with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=hoy_dt.date())
-                interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], fecha_cobro)
-                with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
-                
-                st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
-                
-                st.write("### DETALLE DE PAGO")
-                col_p1, col_p2 = st.columns(2)
-                with col_p1: 
-                    pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
-                with col_p2: 
-                    pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
-                
-                total_a_pagar = pago_cap + pago_int
-                st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
-                
-                if st.button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
-                    run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
-                    pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
-                    registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
-                    nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
-                    if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
-                    else: st.success("PAGO APLICADO CORRECTAMENTE.")
-                    pdf_bytes = generar_comprobante("RECIBO DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO A CAPITAL": f"${pago_cap:,.2f}", "PAGO DE INTERESES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE (CAPITAL)": f"${nuevo_saldo:,.2f}"})
-                    st.session_state['ultimo_recibo_pago'] = pdf_bytes; st.session_state['nombre_recibo_pago'] = f"Recibo_Pago_{p_id}.pdf"
-            
             if 'ultimo_recibo_pago' in st.session_state: 
                 st.download_button("📥 DESCARGAR COMPROBANTE DE PAGO EN PDF", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="application/pdf")
         
