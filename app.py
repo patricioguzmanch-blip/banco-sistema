@@ -76,12 +76,12 @@ def obtener_limites_prestamo():
     t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
     cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
     cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-    cap_calle = cap_pres - cap_dev
+    cap_vigente = cap_pres - cap_dev
     
     base_calculo = t_dep + t_ing_ex + t_int_gan
     limite_70 = base_calculo * 0.70
-    disponible = limite_70 - cap_calle
-    return max(0.0, disponible), limite_70, cap_calle, base_calculo
+    disponible = limite_70 - cap_vigente
+    return max(0.0, disponible), limite_70, cap_vigente, base_calculo
 
 # ==========================================
 # 3. CONEXIÓN POSTGRESQL (NEON CLOUD)
@@ -154,18 +154,16 @@ def registrar_bitacora(accion, detalle):
     run_query("INSERT INTO bitacora (usuario, accion, detalle, fecha) VALUES (?,?,?,?)", (usr, clean_text(accion), clean_text(detalle), fecha_hora))
 
 # ==========================================
-# 4. SOLUCIÓN DEFINITIVA A FUENTES PEQUEÑAS EN LA NUBE
+# 4. COMPROBANTES Y GENERACIÓN DE IMÁGENES
 # ==========================================
 def cargar_fuente(tamanio, negrita=False):
     nombre_archivo = "Roboto-Bold.ttf" if negrita else "Roboto-Regular.ttf"
-    
     if not os.path.exists(nombre_archivo):
         try:
             if negrita: url = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf"
             else: url = "https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf"
             urllib.request.urlretrieve(url, nombre_archivo)
         except: pass 
-    
     try: return ImageFont.truetype(nombre_archivo, tamanio)
     except: return ImageFont.load_default()
 
@@ -184,7 +182,6 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, detalles):
     img = Image.new('RGB', (800, alto), color='#F8F5EE')
     d = ImageDraw.Draw(img)
     
-    # TIPOGRAFÍA GIGANTE
     f_title = cargar_fuente(42, True)
     f_sub = cargar_fuente(28, False)
     f_bold = cargar_fuente(32, True)
@@ -263,7 +260,6 @@ def generar_imagen_dashboard(detalles):
             alto_total += logo_height
         except: pass
 
-    # Lienzo ensanchado a 900 para letras extra grandes
     img = Image.new('RGB', (900, alto_total), color='#F8F5EE')
     d = ImageDraw.Draw(img)
 
@@ -348,6 +344,18 @@ class ResumenPDF(FPDF):
         self.set_line_width(0.8)
         self.line(10, 42, 200, 42)
         self.set_y(47)
+
+def mostrar_preview_y_botones(img_bytes, file_name, prefix_key):
+    st.markdown("<br>", unsafe_allow_html=True)
+    col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
+    with col_img2:
+        st.image(img_bytes, use_container_width=True)
+        c1, c2 = st.columns(2)
+        with c1:
+            st.download_button("📥 Descargar imagen", data=img_bytes, file_name=file_name, mime="image/png", type="primary", use_container_width=True, key=f"dl_{prefix_key}")
+        with c2:
+            if st.button("📤 Compartir", key=f"sh_{prefix_key}", use_container_width=True):
+                st.info("📱 **Tip para celular:** Mantén presionada la imagen y selecciona 'Compartir'.")
 
 # ==========================================
 # 5. INTERFAZ DE LOGIN
@@ -563,8 +571,8 @@ if st.session_state['rol'] == 'Administrador':
         t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0
         t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
         
-        disponible, limite_70, cap_calle, _ = obtener_limites_prestamo()
-        saldo_caja = (t_dep - t_ret) + t_ing_ex - t_egr_ex + t_int_gan - cap_calle
+        disponible, limite_70, cap_vigente, _ = obtener_limites_prestamo()
+        saldo_caja = (t_dep - t_ret) + t_ing_ex - t_egr_ex + t_int_gan - cap_vigente
 
         col1, col2, col3 = st.columns(3)
         col1.metric("TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
@@ -580,7 +588,7 @@ if st.session_state['rol'] == 'Administrador':
         st.markdown("<h3 style='color:#1A5632 !important;'>📊 CONTROL DE CARTERA (REGLA 70%)</h3>", unsafe_allow_html=True)
         col7, col8, col9 = st.columns(3)
         col7.metric("LÍMITE TOTAL PRESTABLE (70%)", f"${limite_70:,.2f}")
-        col8.metric("CRÉDITOS VIGENTES EN CALLE", f"${cap_calle:,.2f}")
+        col8.metric("TOTAL CRÉDITOS VIGENTES", f"${cap_vigente:,.2f}")
         col9.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
         
         st.write("---")
@@ -603,7 +611,7 @@ if st.session_state['rol'] == 'Administrador':
             add_row("INGRESOS EXTRAS:", f"${t_ing_ex:,.2f}", False)
             add_row("INTERESES GANADOS:", f"${t_int_gan:,.2f}", True)
             add_row("TOTAL EGRESOS (GASTOS):", f"${t_egr_ex:,.2f}", False)
-            add_row("CREDITOS VIGENTES (EN CALLE):", f"${cap_calle:,.2f}", True)
+            add_row("CRÉDITOS VIGENTES:", f"${cap_vigente:,.2f}", True)
             add_row("DISPONIBLE PARA PRESTAMOS:", f"${disponible:,.2f}", False)
             pdf.ln(5)
             pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
@@ -612,24 +620,25 @@ if st.session_state['rol'] == 'Administrador':
             try: return pdf.output(dest='S').encode('latin1')
             except: return bytes(pdf.output())
 
-        def crear_imagen_resumen():
-            detalles_resumen = {
-                "TOTAL DEPOSITOS": f"${t_dep:,.2f}",
-                "TOTAL RETIROS": f"${t_ret:,.2f}",
-                "INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
-                "INTERESES GANADOS": f"${t_int_gan:,.2f}",
-                "TOTAL EGRESOS": f"${t_egr_ex:,.2f}",
-                "CREDITOS VIGENTES": f"${cap_calle:,.2f}",
-                "Disponible para prestamos": f"${disponible:,.2f}",
-                "SALDO EN CAJA": f"${saldo_caja:,.2f}"
-            }
-            return generar_imagen_dashboard(detalles_resumen)
-
         col_dl1, col_dl2 = st.columns(2)
         with col_dl1:
             st.download_button("📄 EXPORTAR RESUMEN A PDF", data=crear_pdf_resumen(), file_name="RESUMEN_FINANCIERO.pdf", mime="application/pdf", use_container_width=True)
         with col_dl2:
-            st.download_button("📲 DESCARGAR IMAGEN PARA WHATSAPP", data=crear_imagen_resumen(), file_name="RESUMEN_FINANCIERO.png", mime="image/png", type="primary", use_container_width=True)
+            if st.button("👁️ Generar y Mostrar Resumen en Imagen", type="primary", use_container_width=True):
+                detalles_resumen = {
+                    "TOTAL DEPOSITOS": f"${t_dep:,.2f}",
+                    "TOTAL RETIROS": f"${t_ret:,.2f}",
+                    "INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
+                    "INTERESES GANADOS": f"${t_int_gan:,.2f}",
+                    "TOTAL EGRESOS": f"${t_egr_ex:,.2f}",
+                    "CREDITOS VIGENTES": f"${cap_vigente:,.2f}",
+                    "Disponible para prestamos": f"${disponible:,.2f}",
+                    "SALDO EN CAJA": f"${saldo_caja:,.2f}"
+                }
+                st.session_state['resumen_img'] = generar_imagen_dashboard(detalles_resumen)
+
+        if 'resumen_img' in st.session_state:
+            mostrar_preview_y_botones(st.session_state['resumen_img'], "RESUMEN_FINANCIERO.png", "resumen")
 
     elif menu == "👥 SOCIOS":
         st.header("GESTIÓN DE SOCIOS")
@@ -713,37 +722,43 @@ if st.session_state['rol'] == 'Administrador':
         st.header("CAJAS - DEPÓSITOS Y RETIROS")
         socios = get_dataframe("SELECT id, nombres, apellidos FROM socios")
         if not socios.empty:
-            with st.form("form_trx"):
-                col_tx1, col_tx2 = st.columns(2)
-                with col_tx1: 
-                    socio_id = st.selectbox(
-                        "🔍 BUSCAR Y SELECCIONAR SOCIO", 
-                        socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
-                        index=None, placeholder="✍️ Clic aquí para escribir el nombre o cédula..."
-                    )
-                    tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
-                with col_tx2: 
-                    monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0, value=None)
-                    st.write("")
-                    submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN")
-                
-                if submit_tx:
-                    if not socio_id:
-                        st.error("⚠️ Por favor, busque y seleccione un socio primero.")
-                    elif monto is None:
-                        st.error("⚠️ Por favor, ingrese un monto válido.")
-                    else:
-                        s_id = socio_id.split(" - ")[0]; nombre_socio = socio_id.split(" - ")[1]
-                        tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
-                        registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
-                        
-                        img_bytes = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id}", nombre_socio, {"MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
-                        st.session_state['ultimo_recibo_tx'] = img_bytes
-                        st.session_state['nombre_recibo_tx'] = f"Voucher_{clean_text(tipo)}_{s_id}.png"
-                        st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
+            socio_sel_str = st.selectbox(
+                "🔍 BUSCAR Y SELECCIONAR SOCIO", 
+                socios['id'].astype(str) + " - " + socios['nombres'] + " " + socios['apellidos'],
+                index=None, placeholder="✍️ Clic aquí para escribir el nombre o cédula..."
+            )
             
-            if 'ultimo_recibo_tx' in st.session_state: 
-                st.download_button("📲 DESCARGAR COMPROBANTE PARA WHATSAPP", data=st.session_state['ultimo_recibo_tx'], file_name=st.session_state['nombre_recibo_tx'], mime="image/png", type="primary")
+            if socio_sel_str:
+                s_id = socio_sel_str.split(" - ")[0]
+                nombre_socio = socio_sel_str.split(" - ")[1]
+                
+                st.markdown(f"**Últimos 5 movimientos de {nombre_socio}**")
+                df_ultimos = get_dataframe("SELECT fecha as \"FECHA\", tipo as \"TIPO\", monto as \"MONTO\" FROM transacciones WHERE socio_id=%s ORDER BY id DESC LIMIT 5", (s_id,))
+                if not df_ultimos.empty: st.dataframe(df_ultimos, use_container_width=True)
+                else: st.info("No hay movimientos registrados.")
+                st.markdown("---")
+
+                with st.form("form_trx"):
+                    col_tx1, col_tx2 = st.columns(2)
+                    with col_tx1: tipo = st.radio("TIPO DE TRANSACCIÓN", ["DEPOSITO", "RETIRO"], horizontal=True)
+                    with col_tx2: monto = st.number_input("MONTO DE LA TRANSACCIÓN ($)", min_value=0.01, step=10.0, value=None)
+                    st.write("")
+                    submit_tx = st.form_submit_button("PROCESAR TRANSACCIÓN", type="primary", use_container_width=True)
+                    
+                    if submit_tx:
+                        if monto is None:
+                            st.error("⚠️ Por favor, ingrese un monto válido.")
+                        else:
+                            tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
+                            registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
+                            
+                            img_bytes = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id}", nombre_socio, {"MOVIMIENTO": clean_text(tipo), "MONTO PROCESADO": f"${monto:,.2f}", "ESTADO": "COMPLETADO"})
+                            st.session_state['ultimo_recibo_tx'] = img_bytes
+                            st.session_state['nombre_recibo_tx'] = f"Voucher_{clean_text(tipo)}_{s_id}.png"
+                            st.success(f"EL {clean_text(tipo)} POR ${monto:,.2f} HA SIDO REGISTRADO EXITOSAMENTE.")
+            
+            if 'ultimo_recibo_tx' in st.session_state:
+                mostrar_preview_y_botones(st.session_state['ultimo_recibo_tx'], st.session_state['nombre_recibo_tx'], "tx_caja")
 
     elif menu == "🤝 CRÉDITOS":
         st.header("GESTIÓN DE CRÉDITOS Y COBRANZAS")
@@ -795,7 +810,7 @@ if st.session_state['rol'] == 'Administrador':
                         fecha_ot = st.date_input("FECHA DE OTORGAMIENTO", value=get_guayaquil_time().date())
                     
                     st.write(""); 
-                    if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE"):
+                    if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE", type="primary"):
                         if not socio_cred: st.error("⚠️ Debe seleccionar un socio beneficiario.")
                         elif capital is None: st.error("⚠️ Ingrese el monto del capital a prestar.")
                         elif capital > disponible_prestamos:
@@ -810,8 +825,8 @@ if st.session_state['rol'] == 'Administrador':
                             st.session_state['nombre_recibo_cr'] = f"Voucher_Credito_{s_id}.png"
                             st.success("CRÉDITO GENERADO E INGRESADO A LA CARTERA VIGENTE.")
                 
-                if 'ultimo_recibo_cr' in st.session_state: 
-                    st.download_button("📲 DESCARGAR COMPROBANTE DE CRÉDITO", data=st.session_state['ultimo_recibo_cr'], file_name=st.session_state['nombre_recibo_cr'], mime="image/png", type="primary")
+                if 'ultimo_recibo_cr' in st.session_state:
+                    mostrar_preview_y_botones(st.session_state['ultimo_recibo_cr'], st.session_state['nombre_recibo_cr'], "credito_nuevo")
 
         with tab_cobrar:
             prestamos_vig = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
@@ -832,27 +847,29 @@ if st.session_state['rol'] == 'Administrador':
                     st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
                     
                     st.write("### DETALLE DE PAGO")
-                    col_p1, col_p2 = st.columns(2)
-                    with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
-                    with col_p2: pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
-                    
-                    total_a_pagar = pago_cap + pago_int
-                    st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
-                    
-                    if st.button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
-                        run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
-                        pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
-                        registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
-                        nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                    with st.form("form_pago"):
+                        col_p1, col_p2 = st.columns(2)
+                        with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
+                        with col_p2: pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
                         
-                        img_bytes = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO CAPITAL": f"${pago_cap:,.2f}", "PAGO INTERES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE": f"${nuevo_saldo:,.2f}"})
-                        st.session_state['ultimo_recibo_pago'] = img_bytes; st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.png"
+                        total_a_pagar = pago_cap + pago_int
+                        st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
                         
-                        if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
-                        else: st.success("PAGO APLICADO CORRECTAMENTE.")
-                        
-            if 'ultimo_recibo_pago' in st.session_state: 
-                st.download_button("📲 DESCARGAR COMPROBANTE PARA WHATSAPP", data=st.session_state['ultimo_recibo_pago'], file_name=st.session_state['nombre_recibo_pago'], mime="image/png", type="primary")
+                        if st.form_submit_button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
+                            run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
+                            pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                            registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
+                            nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                            
+                            img_bytes = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO CAPITAL": f"${pago_cap:,.2f}", "PAGO INTERES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE": f"${nuevo_saldo:,.2f}"})
+                            st.session_state['ultimo_recibo_pago'] = img_bytes
+                            st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.png"
+                            
+                            if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
+                            else: st.success("PAGO APLICADO CORRECTAMENTE.")
+                            
+            if 'ultimo_recibo_pago' in st.session_state:
+                mostrar_preview_y_botones(st.session_state['ultimo_recibo_pago'], st.session_state['nombre_recibo_pago'], "cobro_cuota")
         
         with tab_reporte:
             st.write("### REPORTE OFICIAL DE CRÉDITOS VIGENTES")
@@ -880,7 +897,7 @@ if st.session_state['rol'] == 'Administrador':
                 st.dataframe(df_rep, use_container_width=True)
                 
                 col_t1, col_t2, col_t3 = st.columns(3)
-                col_t1.metric("TOTAL CAPITAL EN LA CALLE", f"${total_cap:,.2f}")
+                col_t1.metric("TOTAL CAPITAL VIGENTE", f"${total_cap:,.2f}")
                 col_t2.metric("TOTAL INTERESES POR COBRAR", f"${total_int:,.2f}")
                 col_t3.metric("GRAN TOTAL ESPERADO", f"${(total_cap + total_int):,.2f}")
                 
@@ -888,7 +905,7 @@ if st.session_state['rol'] == 'Administrador':
                     pdf = ResumenPDF()
                     pdf.add_page()
                     pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
-                    pdf.cell(0, 10, clean_text("Reporte de Creditos Activos (En la Calle)"), ln=True, align='C')
+                    pdf.cell(0, 10, clean_text("Reporte de Creditos Activos"), ln=True, align='C')
                     pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(5)
                     pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_draw_color(31, 78, 120); pdf.set_font("Arial", 'B', 9)
                     anchos = [55, 25, 20, 30, 30, 30]
@@ -917,8 +934,7 @@ if st.session_state['rol'] == 'Administrador':
                     except: return bytes(pdf.output())
                     
                 st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
-            else:
-                st.info("No hay créditos vigentes en este momento.")
+            else: st.info("No hay créditos vigentes en este momento.")
 
     elif menu == "🖨️ REIMPRESIÓN":
         st.header("MÓDULO DE REIMPRESIÓN DE COMPROBANTES")
@@ -935,9 +951,10 @@ if st.session_state['rol'] == 'Administrador':
                     tx_id = int(tx_sel_str.split(" - ")[0])
                     tx_data = df_tx[df_tx['id'] == tx_id].iloc[0]
                     nombre_socio_tx = f"{tx_data['nombres']} {tx_data['apellidos']}"
-                    
-                    voucher_tx = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id} (COPIA)", nombre_socio_tx, {"MOVIMIENTO": clean_text(tx_data['tipo']), "MONTO PROCESADO": f"${tx_data['monto']:,.2f}", "FECHA ORIGINAL": tx_data['fecha'], "ESTADO": "COMPLETADO"})
-                    st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_tx, file_name=f"Copia_Voucher_TX_{tx_id}.png", mime="image/png", type="primary")
+                    if st.button("👁️ Generar y Ver Copia del Voucher", use_container_width=True):
+                        st.session_state['reimp_tx'] = generar_voucher_imagen("VOUCHER DE CAJA", f"TX-{tx_id} (COPIA)", nombre_socio_tx, {"MOVIMIENTO": clean_text(tx_data['tipo']), "MONTO PROCESADO": f"${tx_data['monto']:,.2f}", "FECHA ORIGINAL": tx_data['fecha'], "ESTADO": "COMPLETADO"})
+                    if 'reimp_tx' in st.session_state:
+                        mostrar_preview_y_botones(st.session_state['reimp_tx'], f"Copia_Voucher_TX_{tx_id}.png", "reim_tx")
             else: st.warning("No hay transacciones registradas.")
 
         with tab_pagos:
@@ -951,10 +968,11 @@ if st.session_state['rol'] == 'Administrador':
                     pg_id = int(pg_sel_str.split(" - ")[0])
                     pg_data = df_pg[df_pg['p_id'] == pg_id].iloc[0]
                     nombre_socio_pg = f"{pg_data['nombres']} {pg_data['apellidos']}"
-                    saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
-                    
-                    voucher_pg = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, {"CONCEPTO": "PAGO DE CUOTA", "ABONO CAPITAL": f"${pg_data['pago_capital']:,.2f}", "PAGO INTERES": f"${pg_data['pago_interes']:,.2f}", "TOTAL CANCELADO": f"${(pg_data['pago_capital'] + pg_data['pago_interes']):,.2f}", "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"})
-                    st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_pg, file_name=f"Copia_Voucher_Pago_{pg_id}.png", mime="image/png", type="primary")
+                    if st.button("👁️ Generar y Ver Copia del Recibo", use_container_width=True):
+                        saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
+                        st.session_state['reimp_pg'] = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, {"CONCEPTO": "PAGO DE CUOTA", "ABONO CAPITAL": f"${pg_data['pago_capital']:,.2f}", "PAGO INTERES": f"${pg_data['pago_interes']:,.2f}", "TOTAL CANCELADO": f"${(pg_data['pago_capital'] + pg_data['pago_interes']):,.2f}", "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"})
+                    if 'reimp_pg' in st.session_state:
+                        mostrar_preview_y_botones(st.session_state['reimp_pg'], f"Copia_Voucher_Pago_{pg_id}.png", "reim_pg")
             else: st.warning("No hay pagos registrados.")
             
         with tab_cr:
@@ -968,9 +986,10 @@ if st.session_state['rol'] == 'Administrador':
                     cr_id = int(cr_sel_str.split(" - ")[0])
                     cr_data = df_cr[df_cr['id'] == cr_id].iloc[0]
                     nombre_socio_cr = f"{cr_data['nombres']} {cr_data['apellidos']}"
-                    
-                    voucher_cr = generar_voucher_imagen("CREDITO OTORGADO", f"CR-{cr_id} (COPIA)", nombre_socio_cr, {"MODALIDAD": clean_text(cr_data['tipo_credito']), "CAPITAL ENTREGADO": f"${cr_data['capital_original']:,.2f}", "FECHA EMISION": cr_data['fecha_otorgamiento'], "ESTADO": "REGISTRADO"})
-                    st.download_button("📲 REIMPRIMIR COMPROBANTE", data=voucher_cr, file_name=f"Copia_Voucher_Credito_{cr_id}.png", mime="image/png", type="primary")
+                    if st.button("👁️ Generar y Ver Copia del Crédito", use_container_width=True):
+                        st.session_state['reimp_cr'] = generar_voucher_imagen("CREDITO OTORGADO", f"CR-{cr_id} (COPIA)", nombre_socio_cr, {"MODALIDAD": clean_text(cr_data['tipo_credito']), "CAPITAL ENTREGADO": f"${cr_data['capital_original']:,.2f}", "FECHA EMISION": cr_data['fecha_otorgamiento'], "ESTADO": "REGISTRADO"})
+                    if 'reimp_cr' in st.session_state:
+                        mostrar_preview_y_botones(st.session_state['reimp_cr'], f"Copia_Voucher_Credito_{cr_id}.png", "reim_cr")
             else: st.warning("No hay créditos otorgados registrados.")
 
     elif menu == "📊 INGRESOS Y EGRESOS":
