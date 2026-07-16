@@ -350,12 +350,16 @@ def mostrar_preview_y_botones(img_bytes, file_name, prefix_key):
     col_img1, col_img2, col_img3 = st.columns([1, 2, 1])
     with col_img2:
         st.image(img_bytes, use_container_width=True)
-        c1, c2 = st.columns(2)
-        with c1:
-            st.download_button("📥 Descargar imagen", data=img_bytes, file_name=file_name, mime="image/png", type="primary", use_container_width=True, key=f"dl_{prefix_key}")
-        with c2:
-            if st.button("📤 Compartir", key=f"sh_{prefix_key}", use_container_width=True):
-                st.info("📱 **Tip para celular:** Mantén presionada la imagen y selecciona 'Compartir'.")
+        st.download_button(
+            label="📥 DESCARGAR IMAGEN", 
+            data=img_bytes, 
+            file_name=file_name, 
+            mime="image/png", 
+            type="primary", 
+            use_container_width=True, 
+            key=f"dl_{prefix_key}"
+        )
+        st.markdown("<p style='text-align: center; font-size: 13px; color: #7388A3; margin-top: 5px;'>💡 Descarga la imagen en tu dispositivo para enviarla por WhatsApp.</p>", unsafe_allow_html=True)
 
 # ==========================================
 # 5. INTERFAZ DE LOGIN
