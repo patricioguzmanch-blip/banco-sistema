@@ -372,6 +372,100 @@ def generar_imagen_dashboard(detalles):
     img.save(buf, format='PNG')
     return buf.getvalue()
 
+def generar_imagen_reporte_vigentes(reporte_data, total_cap, total_int):
+    alto_filas = len(reporte_data) * 80
+    alto_total = 400 + alto_filas + 280
+    
+    logo_img = None
+    logo_height = 0
+    if os.path.exists("logo_banco.png"):
+        try:
+            logo_img = Image.open("logo_banco.png").convert("RGBA")
+            logo_img.thumbnail((180, 180))
+            logo_height = logo_img.height + 30
+            alto_total += logo_height
+        except: pass
+
+    img = Image.new('RGB', (900, alto_total), color='#F8F5EE')
+    d = ImageDraw.Draw(img)
+
+    f_title = cargar_fuente(46, True)
+    f_sub = cargar_fuente(28, False)
+    f_bold = cargar_fuente(34, True)
+    f_text = cargar_fuente(32, False)
+    f_small = cargar_fuente(22, False)
+
+    def get_text_width(text, font):
+        try: return d.textlength(text, font=font)
+        except:
+            bbox = font.getmask(text).getbbox()
+            return bbox[2] if bbox else 10
+
+    def draw_centered(y, text, font, fill):
+        w = get_text_width(text, font)
+        x = (900 - w) / 2
+        d.text((x, y), text, font=font, fill=fill)
+
+    y_pos = 50
+    if logo_img:
+        logo_x = int((900 - logo_img.width) / 2)
+        img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
+        y_pos += logo_height
+
+    draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
+    y_pos += 65
+    draw_centered(y_pos, "REPORTE DE CRÉDITOS VIGENTES", f_bold, '#122B4D')
+    y_pos += 55
+    draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
+    
+    y_pos += 75
+    
+    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#122B4D')
+    d.text((70, y_pos + 18), "SOCIO Y MESES", font=f_bold, fill='#FFFFFF')
+    w_monto = get_text_width("DEUDA TOTAL", f_bold)
+    d.text((830 - w_monto, y_pos + 18), "DEUDA TOTAL", font=f_bold, fill='#FFFFFF')
+    
+    y_pos += 65
+
+    for index, row in enumerate(reporte_data):
+        bg_color = "#FFFFFF" if index % 2 == 0 else "#F0F4F8"
+        d.rectangle([50, y_pos, 850, y_pos + 80], fill=bg_color, outline="#CCCCCC", width=1)
+        
+        socio_str = f"{row['SOCIO'][:25]} ({row['MESES']}m)"
+        val_str = f"${row['TOTAL ESPERADO']:,.2f}"
+        
+        d.text((70, y_pos + 22), socio_str, font=f_text, fill="#333333")
+        w_val = get_text_width(val_str, f_text)
+        d.text((830 - w_val, y_pos + 22), val_str, font=f_text, fill="#333333")
+        
+        y_pos += 80
+
+    y_pos += 20
+    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#E2E8F0', outline="#CCCCCC", width=1)
+    d.text((70, y_pos + 18), "TOTAL CAPITAL VIGENTE", font=f_bold, fill='#091D3E')
+    w_val = get_text_width(f"${total_cap:,.2f}", f_bold)
+    d.text((830 - w_val, y_pos + 18), f"${total_cap:,.2f}", font=f_bold, fill='#091D3E')
+    y_pos += 65
+
+    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#E2E8F0', outline="#CCCCCC", width=1)
+    d.text((70, y_pos + 18), "TOTAL INTERESES POR COBRAR", font=f_bold, fill='#091D3E')
+    w_val = get_text_width(f"${total_int:,.2f}", f_bold)
+    d.text((830 - w_val, y_pos + 18), f"${total_int:,.2f}", font=f_bold, fill='#091D3E')
+    y_pos += 65
+
+    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#1F4E78', outline="#CCCCCC", width=1)
+    d.text((70, y_pos + 18), "GRAN TOTAL ESPERADO", font=f_bold, fill='#FFFFFF')
+    w_val = get_text_width(f"${(total_cap + total_int):,.2f}", f_bold)
+    d.text((830 - w_val, y_pos + 18), f"${(total_cap + total_int):,.2f}", font=f_bold, fill='#FFFFFF')
+    y_pos += 65
+
+    y_pos += 50
+    draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
+    
+    buf = io.BytesIO()
+    img.save(buf, format='PNG')
+    return buf.getvalue()
+
 class ResumenPDF(FPDF):
     def header(self):
         if os.path.exists('logo_banco.png'):
@@ -1004,7 +1098,15 @@ if st.session_state['rol'] == 'Administrador':
                     try: return pdf.output(dest='S').encode('latin1')
                     except: return bytes(pdf.output())
                     
-                st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf")
+                col_dl1, col_dl2 = st.columns(2)
+                with col_dl1:
+                    st.download_button("📄 EXPORTAR REPORTE EN PDF", data=crear_pdf_reporte_creditos(), file_name="REPORTE_CREDITOS_VIGENTES.pdf", mime="application/pdf", use_container_width=True)
+                with col_dl2:
+                    if st.button("👁️ Generar y Mostrar Reporte en Imagen", type="primary", use_container_width=True):
+                        st.session_state['reporte_vigentes_img'] = generar_imagen_reporte_vigentes(reporte_data, total_cap, total_int)
+                
+                if 'reporte_vigentes_img' in st.session_state:
+                    mostrar_preview_y_botones(st.session_state['reporte_vigentes_img'], "REPORTE_CREDITOS_VIGENTES.png", "rep_vig")
             else:
                 st.info("No hay créditos vigentes en este momento.")
 
