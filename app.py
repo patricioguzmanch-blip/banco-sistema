@@ -9,7 +9,6 @@ import os
 import urllib.request
 import calendar
 from fpdf import FPDF
-import plotly.express as px
 import psycopg2
 import warnings
 from PIL import Image, ImageDraw, ImageFont
@@ -82,11 +81,11 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
         meses_a_cobrar = max(1, meses_calendario)
         
     # LÓGICA DE INTERÉS SOBRE SALDOS DEUDORES (Sin cambiar fecha original)
-    pagos_db = fetch_data("SELECT pago_capital, fecha FROM pagos WHERE prestamo_id = %s", (prestamo_id,))
+    pagos_db = fetch_data("SELECT pago_capital, fecha FROM pagos WHERE prestamo_id = %s", (int(prestamo_id),))
     pagos = []
     if pagos_db:
         for p_cap, p_fecha_str in pagos_db:
-            pagos.append({'cap': p_cap, 'fecha': parse_date(p_fecha_str).date()})
+            pagos.append({'cap': float(p_cap), 'fecha': parse_date(p_fecha_str).date()})
             
     interes_total_generado = 0.0
     
@@ -94,33 +93,33 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
         fecha_aniv = add_months(d_otorg, i)
         
         # Reconstruir cuánto capital debía el socio exactamente en este aniversario
-        cap_en_fecha = capital_original
+        cap_en_fecha = float(capital_original)
         for p in pagos:
             if p['fecha'] <= fecha_aniv:
                 cap_en_fecha -= p['cap']
         
-        if cap_en_fecha < 0: cap_en_fecha = 0
+        if cap_en_fecha < 0: cap_en_fecha = 0.0
         
         # El 10% se calcula solo sobre el saldo que tenía en esa fecha
         interes_total_generado += (cap_en_fecha * 0.10)
         
-    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
+    interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (int(prestamo_id),), returning=True) or 0.0
     
-    interes_pendiente = max(0.0, interes_total_generado - interes_pagado)
-    return interes_pendiente, meses_a_cobrar
+    interes_pendiente = max(0.0, float(interes_total_generado) - float(interes_pagado))
+    return float(interes_pendiente), int(meses_a_cobrar)
 
 def obtener_limites_prestamo():
-    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
-    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
-    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
-    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0
-    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0
-    cap_vigente = cap_pres - cap_dev
+    t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0.0
+    t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0.0
+    t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0.0
+    cap_pres = run_query("SELECT SUM(capital_original) FROM prestamos WHERE estado IN ('VIGENTE', 'PAGADO')", returning=True) or 0.0
+    cap_dev = run_query("SELECT SUM(pago_capital) FROM pagos", returning=True) or 0.0
+    cap_vigente = float(cap_pres) - float(cap_dev)
     
-    base_calculo = t_dep + t_ing_ex + t_int_gan
+    base_calculo = float(t_dep) + float(t_ing_ex) + float(t_int_gan)
     limite_70 = base_calculo * 0.70
     disponible = limite_70 - cap_vigente
-    return max(0.0, disponible), limite_70, cap_vigente, base_calculo
+    return max(0.0, float(disponible)), float(limite_70), float(cap_vigente), float(base_calculo)
 
 # ==========================================
 # 3. CONEXIÓN POSTGRESQL (NEON CLOUD)
@@ -522,7 +521,7 @@ if not st.session_state['logged_in']:
                         u_socio_id = usuario_db[0][2]
                         d_name = user_clean
                         if u_rol == 'SOCIO' and u_socio_id:
-                            s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (u_socio_id,))
+                            s_data = fetch_data("SELECT nombres FROM socios WHERE id=%s", (int(u_socio_id),))
                             if s_data:
                                 nombres_partes = str(s_data[0][0]).split()
                                 d_name = " ".join(nombres_partes[:2]).title()
@@ -610,14 +609,14 @@ if st.session_state['rol'] == 'Administrador':
 
     if menu == "🏢 INICIO Y DASHBOARD":
         st.header("RESUMEN FINANCIERO DEL BANCO")
-        t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
-        t_ret = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'RETIRO'", returning=True) or 0
-        t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0
-        t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0
-        t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0
+        t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0.0
+        t_ret = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'RETIRO'", returning=True) or 0.0
+        t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0.0
+        t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0.0
+        t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0.0
         
         disponible, limite_70, cap_vigente, _ = obtener_limites_prestamo()
-        saldo_caja = (t_dep - t_ret) + t_ing_ex - t_egr_ex + t_int_gan - cap_vigente
+        saldo_caja = float(t_dep - t_ret) + float(t_ing_ex - t_egr_ex) + float(t_int_gan) - cap_vigente
 
         col1, col2, col3 = st.columns(3)
         col1.metric("TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
@@ -740,7 +739,7 @@ if st.session_state['rol'] == 'Administrador':
                     if c_ced:
                         try:
                             nuevo_id = run_query("INSERT INTO socios (cedula, nombres, apellidos, telefono, correo, fecha_registro) VALUES (%s,%s,%s,%s,%s,%s)", (c_ced, clean_text(nom), clean_text(ape), clean_text(tel), clean_text(correo), hoy_str))
-                            run_query("INSERT INTO usuarios (username, password, rol, socio_id) VALUES (%s, %s, 'SOCIO', %s)", (c_ced, c_ced, nuevo_id))
+                            run_query("INSERT INTO usuarios (username, password, rol, socio_id) VALUES (%s, %s, 'SOCIO', %s)", (c_ced, c_ced, int(nuevo_id)))
                             registrar_bitacora("NUEVO SOCIO", f"Registrado Socio: {clean_text(nom)} {clean_text(ape)} (CI: {c_ced})")
                             st.success("SOCIO REGISTRADO CON ÉXITO.")
                         except Exception: st.error("LA CÉDULA YA ESTÁ REGISTRADA O HUBO UN ERROR.")
@@ -750,7 +749,7 @@ if st.session_state['rol'] == 'Administrador':
             lista_socios = get_dataframe("SELECT id, cedula, nombres, apellidos FROM socios")
             if not lista_socios.empty:
                 socio_sel = st.selectbox("SELECCIONE UN SOCIO", lista_socios['id'].astype(str) + " - " + lista_socios['nombres'] + " " + lista_socios['apellidos'])
-                id_sel = socio_sel.split(" - ")[0]; nom_sel = socio_sel.split(" - ")[1]
+                id_sel = int(socio_sel.split(" - ")[0]); nom_sel = socio_sel.split(" - ")[1]
                 datos_actuales = fetch_data("SELECT cedula, nombres, apellidos, telefono, correo FROM socios WHERE id=%s", (id_sel,))[0]
                 with st.form("form_editar_socio"):
                     col_ed1, col_ed2 = st.columns(2)
@@ -777,7 +776,7 @@ if st.session_state['rol'] == 'Administrador':
             )
             
             if socio_sel_str:
-                s_id = socio_sel_str.split(" - ")[0]
+                s_id = int(socio_sel_str.split(" - ")[0])
                 nombre_socio = socio_sel_str.split(" - ")[1]
                 
                 st.markdown(f"**Últimos 5 movimientos de {nombre_socio}**")
@@ -797,7 +796,7 @@ if st.session_state['rol'] == 'Administrador':
                         if monto is None:
                             st.error("⚠️ Por favor, ingrese un monto válido.")
                         else:
-                            tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), monto, hoy_str))
+                            tx_id = run_query("INSERT INTO transacciones (socio_id, tipo, monto, fecha) VALUES (%s,%s,%s,%s)", (s_id, clean_text(tipo), float(monto), hoy_str))
                             registrar_bitacora("TRANSACCION CAJA", f"{clean_text(tipo)} por ${monto:.2f} a cuenta del socio {nombre_socio}")
                             
                             cedula_socio = run_query("SELECT cedula FROM socios WHERE id=%s", (s_id,), returning=True)
@@ -820,22 +819,23 @@ if st.session_state['rol'] == 'Administrador':
                 st.info(f"💰 **Fondos disponibles para nuevos créditos (Límite 70%):** ${disponible_prestamos:,.2f}")
                 
                 for _, row in solicitudes.iterrows():
+                    row_id = int(row['id'])
                     st.info(f"**SOLICITUD PENDIENTE:** {row['nombres']} {row['apellidos']} solicita **${row['CAPITAL_ORIGINAL']}** bajo la modalidad **{row['TIPO_CREDITO']}**.")
                     col1, col2, col3 = st.columns([2, 1, 1])
-                    with col1: f_otorga = st.date_input(f"FECHA DE OTORGAMIENTO (ID:{row['id']})", value=get_guayaquil_time().date())
+                    with col1: f_otorga = st.date_input(f"FECHA DE OTORGAMIENTO (ID:{row_id})", value=get_guayaquil_time().date())
                     with col2: 
                         st.write("<br>", unsafe_allow_html=True)
-                        if st.button("✅ APROBAR", key=f"apr_{row['id']}", use_container_width=True):
-                            if row['CAPITAL_ORIGINAL'] > disponible_prestamos:
+                        if st.button("✅ APROBAR", key=f"apr_{row_id}", use_container_width=True):
+                            if float(row['CAPITAL_ORIGINAL']) > disponible_prestamos:
                                 st.error("❌ No puedes aprobar este crédito. Supera el límite del 70% del dinero disponible.")
                             else:
-                                run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=%s WHERE id=%s", (format_date(f_otorga), row['id']))
-                                registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row['id']} por ${row['CAPITAL_ORIGINAL']} a {row['nombres']} {row['apellidos']}")
+                                run_query("UPDATE prestamos SET estado='VIGENTE', fecha_otorgamiento=%s WHERE id=%s", (format_date(f_otorga), row_id))
+                                registrar_bitacora("CREDITO APROBADO", f"Crédito ID {row_id} por ${row['CAPITAL_ORIGINAL']} a {row['nombres']} {row['apellidos']}")
                                 st.rerun()
                     with col3:
                         st.write("<br>", unsafe_allow_html=True)
-                        if st.button("❌ RECHAZAR", key=f"rec_{row['id']}", use_container_width=True):
-                            run_query("UPDATE prestamos SET estado='RECHAZADO' WHERE id=%s", (row['id'],)); st.rerun()
+                        if st.button("❌ RECHAZAR", key=f"rec_{row_id}", use_container_width=True):
+                            run_query("UPDATE prestamos SET estado='RECHAZADO' WHERE id=%s", (row_id,)); st.rerun()
                     st.write("---")
             else: st.info("No hay solicitudes pendientes en la bandeja de entrada.")
 
@@ -862,11 +862,12 @@ if st.session_state['rol'] == 'Administrador':
                     if st.form_submit_button("EMITIR CRÉDITO Y PASAR A VIGENTE", type="primary"):
                         if not socio_cred: st.error("⚠️ Debe seleccionar un socio beneficiario.")
                         elif capital is None: st.error("⚠️ Ingrese el monto del capital a prestar.")
-                        elif capital > disponible_prestamos:
+                        elif float(capital) > disponible_prestamos:
                             st.error(f"❌ El monto solicitado (${capital:,.2f}) supera el límite de dinero prestable de ${disponible_prestamos:,.2f}.")
                         else:
-                            s_id = socio_cred.split(" - ")[0]; nombre_socio = socio_cred.split(" - ")[1]
-                            pr_id = run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, capital, capital, clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
+                            s_id = int(socio_cred.split(" - ")[0])
+                            nombre_socio = socio_cred.split(" - ")[1]
+                            pr_id = run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud, fecha_otorgamiento) VALUES (%s,%s,%s,%s,%s,%s,%s)", (s_id, float(capital), float(capital), clean_text(tipo_cred), 'VIGENTE', hoy_str, format_date(fecha_ot)))
                             registrar_bitacora("CREDITO DIRECTO OTORGADO", f"Se otorgó ${capital} a {nombre_socio} bajo {tipo_cred}")
                             
                             cedula_socio = run_query("SELECT cedula FROM socios WHERE id=%s", (s_id,), returning=True)
@@ -900,41 +901,40 @@ if st.session_state['rol'] == 'Administrador':
                     st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>DEUDA TOTAL: ${total_deuda:,.2f}</h2><p style='margin: 0; font-size: 13px; color: #555;'>(El sistema destinará el abono primero al interés y el sobrante directo al capital)</p></div>", unsafe_allow_html=True)
                     
                     with st.form("form_pago"):
-                        monto_pago = st.number_input("MONTO DEL ABONO O PAGO TOTAL RECIBIDO ($)", min_value=0.01, step=10.0, value=total_deuda)
+                        monto_pago = st.number_input("MONTO DEL ABONO O PAGO TOTAL RECIBIDO ($)", min_value=0.01, step=10.0, value=float(total_deuda))
                         
                         if st.form_submit_button("REGISTRAR PAGO Y DISTRIBUIR AUTOMÁTICAMENTE", type="primary", use_container_width=True):
-                            if monto_pago > total_deuda + 0.01: # Margen pequeño por redondeo
+                            if float(monto_pago) > float(total_deuda) + 0.01:
                                 st.error(f"❌ El monto ingresado (${monto_pago:,.2f}) es mayor a la deuda total del socio (${total_deuda:,.2f}).")
                             else:
-                                # LÓGICA DE DISTRIBUCIÓN
                                 pago_int = 0.0
                                 pago_cap = 0.0
                                 
-                                if monto_pago <= interes_pendiente:
-                                    pago_int = monto_pago
+                                if float(monto_pago) <= float(interes_pendiente):
+                                    pago_int = float(monto_pago)
                                     pago_cap = 0.0
                                 else:
-                                    pago_int = interes_pendiente
-                                    pago_cap = monto_pago - interes_pendiente
+                                    pago_int = float(interes_pendiente)
+                                    pago_cap = float(monto_pago) - float(interes_pendiente)
                                     
-                                run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
-                                pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                                run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (float(pago_cap), int(p_id)))
+                                pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (int(p_id), float(pago_cap), float(pago_int), format_date(fecha_cobro)))
                                 registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap:,.2f} / Interés ${pago_int:,.2f}")
                                 
-                                nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                                nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (int(p_id),), returning=True)
                                 
                                 img_bytes = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, cedula_socio, {
                                     "CONCEPTO": "ABONO / PAGO DE CUOTA", 
                                     "MONTO RECIBIDO": f"${monto_pago:,.2f}", 
                                     "APLICADO A INTERÉS": f"${pago_int:,.2f}", 
                                     "ABONO AL CAPITAL": f"${pago_cap:,.2f}",
-                                    "NUEVO SALDO CAPITAL": f"${nuevo_saldo:,.2f}"
+                                    "NUEVO SALDO CAPITAL": f"${float(nuevo_saldo):,.2f}"
                                 })
                                 st.session_state['ultimo_recibo_pago'] = img_bytes
                                 st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.png"
                                 
-                                if nuevo_saldo <= 0.01: 
-                                    run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,))
+                                if float(nuevo_saldo) <= 0.01: 
+                                    run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (int(p_id),))
                                     st.success("✅ ¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
                                 else: 
                                     st.success("✅ PAGO DISTRIBUIDO Y APLICADO CORRECTAMENTE.")
@@ -953,15 +953,15 @@ if st.session_state['rol'] == 'Administrador':
                 
                 for _, row in df_activos.iterrows():
                     int_pend, meses = calcular_interes_pendiente(row['id'], row['CAPITAL_ORIGINAL'], row['TIPO_CREDITO'], row['FECHA_OTORGAMIENTO'], get_guayaquil_time())
-                    total_cap += row['SALDO_CAPITAL']
-                    total_int += int_pend
+                    total_cap += float(row['SALDO_CAPITAL'])
+                    total_int += float(int_pend)
                     reporte_data.append({
                         "SOCIO": f"{row['nombres']} {row['apellidos']}",
                         "FECHA OTORG.": row['FECHA_OTORGAMIENTO'],
                         "MESES": meses,
-                        "CAPITAL VIGENTE": row['SALDO_CAPITAL'],
-                        "INTERÉS GENERADO": round(int_pend, 2),
-                        "TOTAL ESPERADO": round(row['SALDO_CAPITAL'] + int_pend, 2)
+                        "CAPITAL VIGENTE": float(row['SALDO_CAPITAL']),
+                        "INTERÉS GENERADO": round(float(int_pend), 2),
+                        "TOTAL ESPERADO": round(float(row['SALDO_CAPITAL']) + float(int_pend), 2)
                     })
                 
                 df_rep = pd.DataFrame(reporte_data)
@@ -1042,14 +1042,14 @@ if st.session_state['rol'] == 'Administrador':
                     pg_data = df_pg[df_pg['p_id'] == pg_id].iloc[0]
                     nombre_socio_pg = f"{pg_data['nombres']} {pg_data['apellidos']}"
                     if st.button("👁️ Generar y Ver Copia del Recibo", use_container_width=True):
-                        saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
-                        total_recibido = pg_data['pago_capital'] + pg_data['pago_interes']
+                        saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (int(pg_data['pr_id']),), returning=True)
+                        total_recibido = float(pg_data['pago_capital']) + float(pg_data['pago_interes'])
                         st.session_state['reimp_pg'] = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, pg_data['cedula'], {
                             "CONCEPTO": "ABONO / PAGO DE CUOTA", 
                             "MONTO RECIBIDO": f"${total_recibido:,.2f}", 
                             "APLICADO A INTERÉS": f"${pg_data['pago_interes']:,.2f}", 
                             "ABONO AL CAPITAL": f"${pg_data['pago_capital']:,.2f}", 
-                            "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"
+                            "SALDO ACTUAL DEL CREDITO": f"${float(saldo_actual):,.2f}"
                         })
                     if 'reimp_pg' in st.session_state:
                         mostrar_preview_y_botones(st.session_state['reimp_pg'], f"Copia_Voucher_Pago_{pg_id}.png", "reim_pg")
@@ -1082,7 +1082,7 @@ if st.session_state['rol'] == 'Administrador':
             if st.form_submit_button("REGISTRAR ASIENTO CONTABLE"):
                 if monto_flujo is None: st.error("⚠️ Ingrese un monto válido.")
                 else:
-                    run_query("INSERT INTO flujo_extra (tipo, categoria, monto, descripcion, fecha) VALUES (%s,%s,%s,%s,%s)", (clean_text(tipo_flujo), clean_text(categoria), monto_flujo, clean_text(desc), hoy_str))
+                    run_query("INSERT INTO flujo_extra (tipo, categoria, monto, descripcion, fecha) VALUES (%s,%s,%s,%s,%s)", (clean_text(tipo_flujo), clean_text(categoria), float(monto_flujo), clean_text(desc), hoy_str))
                     registrar_bitacora("FLUJO EXTRA", f"{tipo_flujo} por ${monto_flujo}: {clean_text(desc)}"); st.success("REGISTRO GUARDADO EN EL LIBRO MAYOR.")
 
     elif menu == "⚙️ CONFIGURACIÓN":
@@ -1134,14 +1134,14 @@ if st.session_state['rol'] == 'Administrador':
 
 elif st.session_state['rol'] == 'SOCIO':
     menu = st.sidebar.radio("MI PORTAL", ["📊 MI ESTADO DE CUENTA", "🤝 MIS PRÉSTAMOS"])
-    mi_id = st.session_state['socio_id']
+    mi_id = int(st.session_state['socio_id'])
     if st.sidebar.button("CERRAR SESIÓN"): st.session_state.clear(); st.rerun()
     
     if menu == "📊 MI ESTADO DE CUENTA":
         st.header("MIS AHORROS Y MOVIMIENTOS")
-        dep = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='DEPOSITO'", (mi_id,), returning=True) or 0
-        ret = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='RETIRO'", (mi_id,), returning=True) or 0
-        st.metric("LIQUIDEZ DISPONIBLE (SALDO)", f"${(dep - ret):,.2f}")
+        dep = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='DEPOSITO'", (mi_id,), returning=True) or 0.0
+        ret = run_query("SELECT SUM(monto) FROM transacciones WHERE socio_id=%s AND tipo='RETIRO'", (mi_id,), returning=True) or 0.0
+        st.metric("LIQUIDEZ DISPONIBLE (SALDO)", f"${float(dep - ret):,.2f}")
         
         st.markdown("---")
         st.subheader("💡 Resumen de Créditos Activos")
@@ -1153,7 +1153,7 @@ elif st.session_state['rol'] == 'SOCIO':
             
             for _, row in mis_creditos.iterrows():
                 interes, meses = calcular_interes_pendiente(row['id'], row['capital_original'], row['tipo_credito'], row['fecha_otorgamiento'], get_guayaquil_time())
-                total_pagar = row['saldo_capital'] + interes
+                total_pagar = float(row['saldo_capital']) + float(interes)
                 
                 with st.container():
                     st.markdown(f"""
@@ -1161,7 +1161,7 @@ elif st.session_state['rol'] == 'SOCIO':
                         <p style='margin:0; font-size: 14px; color: #555;'><strong>Crédito #{row['id']}</strong> - {row['tipo_credito']}</p>
                         <p style='margin:0; font-size: 14px; color: #555;'>📅 Otorgado el: {row['fecha_otorgamiento']} (Han transcurrido <strong>{meses} meses</strong>)</p>
                         <h4 style='margin:5px 0 0 0; color: #091D3E;'>Deuda actual a pagar: <strong>${total_pagar:,.2f}</strong></h4>
-                        <p style='margin:0; font-size: 12px; color: #777;'>(Capital pendiente: ${row['saldo_capital']:,.2f} + Intereses generados a la fecha: ${interes:,.2f})</p>
+                        <p style='margin:0; font-size: 12px; color: #777;'>(Capital pendiente: ${float(row['saldo_capital']):,.2f} + Intereses generados a la fecha: ${float(interes):,.2f})</p>
                     </div>
                     """, unsafe_allow_html=True)
         else:
@@ -1190,9 +1190,9 @@ elif st.session_state['rol'] == 'SOCIO':
                 if st.form_submit_button("ENVIAR SOLICITUD DE CRÉDITO"):
                     if monto_solicitado is None: 
                         st.error("⚠️ Por favor, ingrese un monto válido.")
-                    elif monto_solicitado > disponible:
+                    elif float(monto_solicitado) > disponible:
                         st.error(f"❌ El monto solicitado (${monto_solicitado:,.2f}) supera el valor disponible actual (${disponible:,.2f}).")
                     else:
-                        run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (%s,%s,%s,%s,%s,%s)", (mi_id, monto_solicitado, monto_solicitado, clean_text(tipo_cred), 'SOLICITADO', hoy_str))
+                        run_query("INSERT INTO prestamos (socio_id, capital_original, saldo_capital, tipo_credito, estado, fecha_solicitud) VALUES (%s,%s,%s,%s,%s,%s)", (mi_id, float(monto_solicitado), float(monto_solicitado), clean_text(tipo_cred), 'SOLICITADO', hoy_str))
                         registrar_bitacora("NUEVA SOLICITUD", f"El socio ID {mi_id} solicitó crédito de ${monto_solicitado}")
                         st.success("LA SOLICITUD HA INGRESADO EXITOSAMENTE A LA BANDEJA DE APROBACIONES.")
