@@ -7,6 +7,7 @@ import unicodedata
 import io
 import os
 import urllib.request
+import calendar
 from fpdf import FPDF
 import plotly.express as px
 import psycopg2
@@ -33,7 +34,7 @@ if 'db_initialized' not in st.session_state:
     st.session_state['db_initialized'] = False
 
 # ==========================================
-# 2. FUNCIONES DE UTILIDAD
+# 2. FUNCIONES DE UTILIDAD Y MATEMÁTICA FINANCIERA
 # ==========================================
 def get_guayaquil_time():
     tz = pytz.timezone('America/Guayaquil')
@@ -51,24 +52,62 @@ def parse_date(date_str):
     try: return datetime.strptime(date_str, "%d/%m/%Y")
     except ValueError: return datetime.strptime(date_str, "%d/%m/%Y %H:%M:%S")
 
+def add_months(sourcedate, months):
+    month = sourcedate.month - 1 + months
+    year = int(sourcedate.year + month // 12)
+    month = month % 12 + 1
+    day = min(sourcedate.day, calendar.monthrange(year, month)[1])
+    return datetime(year, month, day).date()
+
 def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fecha_otorgamiento_str, fecha_cobro_dt):
     fecha_otorg_dt = parse_date(fecha_otorgamiento_str)
     d_cobro = fecha_cobro_dt.date() if hasattr(fecha_cobro_dt, 'date') else fecha_cobro_dt
     d_otorg = fecha_otorg_dt.date() if hasattr(fecha_otorg_dt, 'date') else fecha_otorg_dt
+    
     dias_transcurridos = (d_cobro - d_otorg).days
     if dias_transcurridos < 0: dias_transcurridos = 0
+    
     meses_calendario = (d_cobro.year - d_otorg.year) * 12 + d_cobro.month - d_otorg.month
     if d_cobro.day < d_otorg.day: meses_calendario -= 1
     meses_calendario = max(0, meses_calendario)
+    
+    if tipo_credito == "ESPECIAL (0% INTERES)":
+        return 0.0, 0
+        
     meses_a_cobrar = 0
-    if tipo_credito == "ESPECIAL (0% INTERES)": meses_a_cobrar = 0
-    elif tipo_credito == "CORTO PLAZO (5 DIAS)":
-        if dias_transcurridos <= 5: meses_a_cobrar = 0
+    if tipo_credito == "CORTO PLAZO (5 DIAS)":
+        if dias_transcurridos <= 5: return 0.0, 0
         else: meses_a_cobrar = max(1, meses_calendario)
-    else: meses_a_cobrar = max(1, meses_calendario)
-    interes_total_generado = capital_original * 0.10 * meses_a_cobrar
+    else:
+        meses_a_cobrar = max(1, meses_calendario)
+        
+    # LÓGICA DE INTERÉS SOBRE SALDOS DEUDORES (Sin cambiar fecha original)
+    pagos_db = fetch_data("SELECT pago_capital, fecha FROM pagos WHERE prestamo_id = %s", (prestamo_id,))
+    pagos = []
+    if pagos_db:
+        for p_cap, p_fecha_str in pagos_db:
+            pagos.append({'cap': p_cap, 'fecha': parse_date(p_fecha_str).date()})
+            
+    interes_total_generado = 0.0
+    
+    for i in range(1, meses_a_cobrar + 1):
+        fecha_aniv = add_months(d_otorg, i)
+        
+        # Reconstruir cuánto capital debía el socio exactamente en este aniversario
+        cap_en_fecha = capital_original
+        for p in pagos:
+            if p['fecha'] <= fecha_aniv:
+                cap_en_fecha -= p['cap']
+        
+        if cap_en_fecha < 0: cap_en_fecha = 0
+        
+        # El 10% se calcula solo sobre el saldo que tenía en esa fecha
+        interes_total_generado += (cap_en_fecha * 0.10)
+        
     interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (prestamo_id,), returning=True) or 0.0
-    return max(0.0, interes_total_generado - interes_pagado), meses_a_cobrar
+    
+    interes_pendiente = max(0.0, interes_total_generado - interes_pagado)
+    return interes_pendiente, meses_a_cobrar
 
 def obtener_limites_prestamo():
     t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0
@@ -842,7 +881,7 @@ if st.session_state['rol'] == 'Administrador':
         with tab_cobrar:
             prestamos_vig = get_dataframe('SELECT p.id, s.id as socio_id, s.cedula, s.nombres, s.apellidos, p.saldo_capital as "SALDO_CAPITAL", p.capital_original as "CAPITAL_ORIGINAL", p.fecha_otorgamiento as "FECHA_OTORGAMIENTO", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'VIGENTE\'')
             if not prestamos_vig.empty:
-                opciones = prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'] + " - Capital Original: $" + prestamos_vig['CAPITAL_ORIGINAL'].astype(str)
+                opciones = prestamos_vig['id'].astype(str) + " - " + prestamos_vig['nombres'] + " " + prestamos_vig['apellidos'] + " - Deuda de Capital: $" + prestamos_vig['SALDO_CAPITAL'].astype(str)
                 p_sel_str = st.selectbox("BUSCAR PRÉSTAMO ACTIVO", opciones, index=None, placeholder="✍️ Buscar préstamo por socio...")
                 
                 if p_sel_str:
@@ -852,33 +891,53 @@ if st.session_state['rol'] == 'Administrador':
                     cedula_socio = p_data['cedula']
                     
                     col_f1, col_f2 = st.columns([1, 2])
-                    with col_f1: fecha_cobro = st.date_input("FECHA DE COBRO A APLICAR", value=get_guayaquil_time().date())
+                    with col_f1: fecha_cobro = st.date_input("FECHA DE PAGO", value=get_guayaquil_time().date())
                     interes_pendiente, meses_transcurridos = calcular_interes_pendiente(p_id, p_data['CAPITAL_ORIGINAL'], p_data['TIPO_CREDITO'], p_data['FECHA_OTORGAMIENTO'], get_guayaquil_time())
-                    with col_f2: st.info(f"📅 **FECHA DE OTORGAMIENTO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
+                    with col_f2: st.info(f"📅 **FECHA ORIGINAL DEL CRÉDITO:** {p_data['FECHA_OTORGAMIENTO']} &nbsp;&nbsp;|&nbsp;&nbsp; ⏳ **MESES TRANSCURRIDOS:** {meses_transcurridos} mes(es)")
                     
-                    st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS GENERADO A LA FECHA:** ${interes_pendiente:,.2f}")
+                    total_deuda = float(p_data['SALDO_CAPITAL']) + float(interes_pendiente)
+                    st.warning(f"💰 **SALDO CAPITAL ACTUAL:** ${p_data['SALDO_CAPITAL']:,.2f} &nbsp;&nbsp;|&nbsp;&nbsp; 📈 **INTERÉS ACUMULADO:** ${interes_pendiente:,.2f}")
+                    st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>DEUDA TOTAL: ${total_deuda:,.2f}</h2><p style='margin: 0; font-size: 13px; color: #555;'>(El sistema destinará el abono primero al interés y el sobrante directo al capital)</p></div>", unsafe_allow_html=True)
                     
-                    st.write("### DETALLE DE PAGO")
                     with st.form("form_pago"):
-                        col_p1, col_p2 = st.columns(2)
-                        with col_p1: pago_cap = st.number_input("ABONO AL CAPITAL ($)", min_value=0.0, max_value=float(p_data['SALDO_CAPITAL']), step=10.0, value=float(p_data['SALDO_CAPITAL']))
-                        with col_p2: pago_int = st.number_input("PAGO DE INTERÉS ($)", min_value=0.0, step=5.0, value=float(interes_pendiente))
+                        monto_pago = st.number_input("MONTO DEL ABONO O PAGO TOTAL RECIBIDO ($)", min_value=0.01, step=10.0, value=total_deuda)
                         
-                        total_a_pagar = pago_cap + pago_int
-                        st.markdown(f"<div style='background-color: #E2E8F0; padding: 15px; border-radius: 8px; text-align: center; margin-top: 10px; margin-bottom: 20px;'><h2 style='color: #1F4E78; margin: 0;'>TOTAL A PAGAR: ${total_a_pagar:,.2f}</h2></div>", unsafe_allow_html=True)
-                        
-                        if st.form_submit_button("CONFIRMAR RECEPCIÓN DE PAGO", type="primary", use_container_width=True):
-                            run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
-                            pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
-                            registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap} / Interés ${pago_int}")
-                            nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
-                            
-                            img_bytes = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, cedula_socio, {"CONCEPTO": "PAGO DE CUOTA DE CREDITO", "ABONO CAPITAL": f"${pago_cap:,.2f}", "PAGO INTERES": f"${pago_int:,.2f}", "TOTAL CANCELADO": f"${(pago_cap + pago_int):,.2f}", "SALDO PENDIENTE": f"${nuevo_saldo:,.2f}"})
-                            st.session_state['ultimo_recibo_pago'] = img_bytes
-                            st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.png"
-                            
-                            if nuevo_saldo <= 0: run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,)); st.success("¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
-                            else: st.success("PAGO APLICADO CORRECTAMENTE.")
+                        if st.form_submit_button("REGISTRAR PAGO Y DISTRIBUIR AUTOMÁTICAMENTE", type="primary", use_container_width=True):
+                            if monto_pago > total_deuda + 0.01: # Margen pequeño por redondeo
+                                st.error(f"❌ El monto ingresado (${monto_pago:,.2f}) es mayor a la deuda total del socio (${total_deuda:,.2f}).")
+                            else:
+                                # LÓGICA DE DISTRIBUCIÓN
+                                pago_int = 0.0
+                                pago_cap = 0.0
+                                
+                                if monto_pago <= interes_pendiente:
+                                    pago_int = monto_pago
+                                    pago_cap = 0.0
+                                else:
+                                    pago_int = interes_pendiente
+                                    pago_cap = monto_pago - interes_pendiente
+                                    
+                                run_query("UPDATE prestamos SET saldo_capital = saldo_capital - %s WHERE id = %s", (pago_cap, p_id))
+                                pago_id = run_query("INSERT INTO pagos (prestamo_id, pago_capital, pago_interes, fecha) VALUES (%s,%s,%s,%s)", (p_id, pago_cap, pago_int, format_date(fecha_cobro)))
+                                registrar_bitacora("PAGO DE CREDITO", f"Cobro a {nombre_socio}: Capital ${pago_cap:,.2f} / Interés ${pago_int:,.2f}")
+                                
+                                nuevo_saldo = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (p_id,), returning=True)
+                                
+                                img_bytes = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pago_id}", nombre_socio, cedula_socio, {
+                                    "CONCEPTO": "ABONO / PAGO DE CUOTA", 
+                                    "MONTO RECIBIDO": f"${monto_pago:,.2f}", 
+                                    "APLICADO A INTERÉS": f"${pago_int:,.2f}", 
+                                    "ABONO AL CAPITAL": f"${pago_cap:,.2f}",
+                                    "NUEVO SALDO CAPITAL": f"${nuevo_saldo:,.2f}"
+                                })
+                                st.session_state['ultimo_recibo_pago'] = img_bytes
+                                st.session_state['nombre_recibo_pago'] = f"Voucher_Pago_{p_id}.png"
+                                
+                                if nuevo_saldo <= 0.01: 
+                                    run_query("UPDATE prestamos SET estado = 'PAGADO' WHERE id = %s", (p_id,))
+                                    st.success("✅ ¡EL CRÉDITO HA SIDO LIQUIDADO EN SU TOTALIDAD!")
+                                else: 
+                                    st.success("✅ PAGO DISTRIBUIDO Y APLICADO CORRECTAMENTE.")
                             
             if 'ultimo_recibo_pago' in st.session_state:
                 mostrar_preview_y_botones(st.session_state['ultimo_recibo_pago'], st.session_state['nombre_recibo_pago'], "cobro_cuota")
@@ -984,7 +1043,14 @@ if st.session_state['rol'] == 'Administrador':
                     nombre_socio_pg = f"{pg_data['nombres']} {pg_data['apellidos']}"
                     if st.button("👁️ Generar y Ver Copia del Recibo", use_container_width=True):
                         saldo_actual = run_query("SELECT saldo_capital FROM prestamos WHERE id = %s", (pg_data['pr_id'],), returning=True)
-                        st.session_state['reimp_pg'] = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, pg_data['cedula'], {"CONCEPTO": "PAGO DE CUOTA", "ABONO CAPITAL": f"${pg_data['pago_capital']:,.2f}", "PAGO INTERES": f"${pg_data['pago_interes']:,.2f}", "TOTAL CANCELADO": f"${(pg_data['pago_capital'] + pg_data['pago_interes']):,.2f}", "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"})
+                        total_recibido = pg_data['pago_capital'] + pg_data['pago_interes']
+                        st.session_state['reimp_pg'] = generar_voucher_imagen("VOUCHER DE PAGO", f"PG-{pg_id} (COPIA)", nombre_socio_pg, pg_data['cedula'], {
+                            "CONCEPTO": "ABONO / PAGO DE CUOTA", 
+                            "MONTO RECIBIDO": f"${total_recibido:,.2f}", 
+                            "APLICADO A INTERÉS": f"${pg_data['pago_interes']:,.2f}", 
+                            "ABONO AL CAPITAL": f"${pg_data['pago_capital']:,.2f}", 
+                            "SALDO ACTUAL DEL CREDITO": f"${saldo_actual:,.2f}"
+                        })
                     if 'reimp_pg' in st.session_state:
                         mostrar_preview_y_botones(st.session_state['reimp_pg'], f"Copia_Voucher_Pago_{pg_id}.png", "reim_pg")
             else: st.warning("No hay pagos registrados.")
