@@ -80,7 +80,6 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
     else:
         meses_a_cobrar = max(1, meses_calendario)
         
-    # LÓGICA DE INTERÉS SOBRE SALDOS DEUDORES (Sin cambiar fecha original)
     pagos_db = fetch_data("SELECT pago_capital, fecha FROM pagos WHERE prestamo_id = %s", (int(prestamo_id),))
     pagos = []
     if pagos_db:
@@ -92,7 +91,6 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
     for i in range(1, meses_a_cobrar + 1):
         fecha_aniv = add_months(d_otorg, i)
         
-        # Reconstruir cuánto capital debía el socio exactamente en este aniversario
         cap_en_fecha = float(capital_original)
         for p in pagos:
             if p['fecha'] <= fecha_aniv:
@@ -100,7 +98,6 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
         
         if cap_en_fecha < 0: cap_en_fecha = 0.0
         
-        # El 10% se calcula solo sobre el saldo que tenía en esa fecha
         interes_total_generado += (cap_en_fecha * 0.10)
         
     interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (int(prestamo_id),), returning=True) or 0.0
@@ -342,7 +339,7 @@ def generar_imagen_dashboard(detalles):
     y_pos += 65
 
     for index, (key, val) in enumerate(detalles.items()):
-        if key == "Disponible para prestamos":
+        if "SALDO NETO EN CAJA" in key or "Disponible para prestamos" in key:
             bg_color = "#1F4E78"
             text_color = "#FFFFFF"
             font_k = f_bold
@@ -703,31 +700,44 @@ if st.session_state['rol'] == 'Administrador':
 
     if menu == "🏢 INICIO Y DASHBOARD":
         st.header("RESUMEN FINANCIERO DEL BANCO")
+        
         t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0.0
         t_ret = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'RETIRO'", returning=True) or 0.0
         t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0.0
         t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0.0
         t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0.0
         
-        disponible, limite_70, cap_vigente, _ = obtener_limites_prestamo()
-        saldo_caja = float(t_dep - t_ret) + float(t_ing_ex - t_egr_ex) + float(t_int_gan) - cap_vigente
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
-        col2.metric("INGRESOS EXTRAS", f"${t_ing_ex:,.2f}")
-        col3.metric("INTERESES GANADOS", f"${t_int_gan:,.2f}")
+        disponible, _, cap_vigente, _ = obtener_limites_prestamo()
         
-        col4, col5, col6 = st.columns(3)
-        col4.metric("TOTAL RETIROS", f"${t_ret:,.2f}")
-        col5.metric("TOTAL EGRESOS", f"${t_egr_ex:,.2f}")
-        col6.metric("💰 SALDO EN CAJA (EFECTIVO)", f"${saldo_caja:,.2f}")
+        # FÓRMULA DE CAJA EXACTA COMO LA PEDISTE
+        total_ingresos = float(t_dep) + float(t_ing_ex) + float(t_int_gan)
+        total_egresos = float(t_ret) + float(t_egr_ex)
+        saldo_caja = total_ingresos - total_egresos - float(cap_vigente)
+
+        # 1. SECCIÓN INGRESOS
+        st.markdown("<h3 style='color:#1A5632 !important;'>🟢 1. INGRESOS DEL SISTEMA</h3>", unsafe_allow_html=True)
+        col1, col2, col3 = st.columns(3)
+        col1.metric("📥 TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
+        col2.metric("➕ INGRESOS EXTRAS", f"${t_ing_ex:,.2f}")
+        col3.metric("📈 INTERESES GANADOS", f"${t_int_gan:,.2f}")
         
         st.divider()
-        st.markdown("<h3 style='color:#1A5632 !important;'>📊 CONTROL DE CARTERA (REGLA 70%)</h3>", unsafe_allow_html=True)
+        
+        # 2. SECCIÓN EGRESOS
+        st.markdown("<h3 style='color:#B91C1C !important;'>🔴 2. SALIDAS Y EGRESOS</h3>", unsafe_allow_html=True)
+        col4, col5, col6 = st.columns(3)
+        col4.metric("📤 RETIROS DE SOCIOS", f"${t_ret:,.2f}")
+        col5.metric("➖ GASTOS EXTRAS", f"${t_egr_ex:,.2f}")
+        col6.empty() 
+        
+        st.divider()
+
+        # 3. SECCIÓN CAJA
+        st.markdown("<h3 style='color:#091D3E !important;'>💰 3. DISPONIBILIDAD Y CAJA (EFECTIVO)</h3>", unsafe_allow_html=True)
         col7, col8, col9 = st.columns(3)
-        col7.metric("LÍMITE TOTAL PRESTABLE (70%)", f"${limite_70:,.2f}")
-        col8.metric("TOTAL CRÉDITOS VIGENTES", f"${cap_vigente:,.2f}")
-        col9.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
+        col7.metric("💵 CAPITAL PRESTADO", f"${cap_vigente:,.2f}")
+        col8.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
+        col9.metric("🏦 SALDO NETO EN CAJA", f"${saldo_caja:,.2f}")
         
         st.write("---")
         
@@ -737,37 +747,56 @@ if st.session_state['rol'] == 'Administrador':
             pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
             pdf.cell(0, 10, clean_text("Resumen Financiero Consolidado"), ln=True, align='C')
             pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(10)
-            def add_row(label, value, fill_row):
+            
+            def add_row(label, value, fill_row, is_bold=False):
                 if fill_row: pdf.set_fill_color(244, 248, 251)
                 else: pdf.set_fill_color(255, 255, 255)
-                pdf.set_text_color(51, 51, 51); pdf.set_font("Arial", 'B', 11)
-                pdf.cell(100, 10, label, border=1, fill=True); pdf.set_font("Arial", '', 11)
+                pdf.set_text_color(51, 51, 51)
+                if is_bold: pdf.set_font("Arial", 'B', 11)
+                else: pdf.set_font("Arial", '', 11)
+                pdf.cell(100, 10, label, border=1, fill=True)
                 pdf.cell(50, 10, value, border=1, fill=True, ln=True, align='R')
+
             pdf.set_draw_color(226, 232, 240)
-            add_row("TOTAL DEPOSITOS:", f"${t_dep:,.2f}", False)
-            add_row("TOTAL RETIROS:", f"${t_ret:,.2f}", True)
-            add_row("INGRESOS EXTRAS:", f"${t_ing_ex:,.2f}", False)
-            add_row("INTERESES GANADOS:", f"${t_int_gan:,.2f}", True)
-            add_row("TOTAL EGRESOS (GASTOS):", f"${t_egr_ex:,.2f}", False)
-            add_row("CRÉDITOS VIGENTES:", f"${cap_vigente:,.2f}", True)
-            add_row("DISPONIBLE PARA PRESTAMOS:", f"${disponible:,.2f}", False)
+            
+            # Seccion 1
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(31, 78, 120)
+            pdf.cell(0, 10, "1. INGRESOS", ln=True)
+            add_row("Total Depositos:", f"${t_dep:,.2f}", False)
+            add_row("Ingresos Extras:", f"${t_ing_ex:,.2f}", True)
+            add_row("Intereses Ganados:", f"${t_int_gan:,.2f}", False)
+            
+            pdf.ln(2)
+            # Seccion 2
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(185, 28, 28)
+            pdf.cell(0, 10, "2. SALIDAS Y EGRESOS", ln=True)
+            add_row("Retiros de Socios:", f"${t_ret:,.2f}", False)
+            add_row("Gastos Extras:", f"${t_egr_ex:,.2f}", True)
+            
+            pdf.ln(2)
+            # Seccion 3
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(9, 29, 62)
+            pdf.cell(0, 10, "3. BALANCE Y CAJA", ln=True)
+            add_row("Capital Prestado (En la calle):", f"${cap_vigente:,.2f}", False)
+            add_row("Disponible para Prestar (Lmite 70%):", f"${disponible:,.2f}", True)
+            
             pdf.ln(5)
             pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
-            pdf.cell(100, 12, "SALDO ACTUAL EN CAJA:", border=0, fill=True)
+            pdf.cell(100, 12, "SALDO NETO EN CAJA:", border=0, fill=True)
             pdf.cell(50, 12, f"${saldo_caja:,.2f}", border=0, fill=True, ln=True, align='R')
+            
             try: return pdf.output(dest='S').encode('latin1')
             except: return bytes(pdf.output())
 
         def crear_imagen_resumen():
             detalles_resumen = {
-                "TOTAL DEPOSITOS": f"${t_dep:,.2f}",
-                "TOTAL RETIROS": f"${t_ret:,.2f}",
-                "INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
-                "INTERESES GANADOS": f"${t_int_gan:,.2f}",
-                "TOTAL EGRESOS": f"${t_egr_ex:,.2f}",
-                "CREDITOS VIGENTES": f"${cap_vigente:,.2f}",
-                "Disponible para prestamos": f"${disponible:,.2f}",
-                "SALDO EN CAJA": f"${saldo_caja:,.2f}"
+                "[+] TOTAL DEPOSITOS": f"${t_dep:,.2f}",
+                "[+] INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
+                "[+] INTERESES GANADOS": f"${t_int_gan:,.2f}",
+                "[-] RETIROS DE SOCIOS": f"${t_ret:,.2f}",
+                "[-] GASTOS EXTRAS": f"${t_egr_ex:,.2f}",
+                "[*] CAPITAL PRESTADO": f"${cap_vigente:,.2f}",
+                "SALDO NETO EN CAJA": f"${saldo_caja:,.2f}"
             }
             return generar_imagen_dashboard(detalles_resumen)
 
