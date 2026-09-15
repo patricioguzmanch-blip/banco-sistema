@@ -90,18 +90,15 @@ def calcular_interes_pendiente(prestamo_id, capital_original, tipo_credito, fech
     
     for i in range(1, meses_a_cobrar + 1):
         fecha_aniv = add_months(d_otorg, i)
-        
         cap_en_fecha = float(capital_original)
         for p in pagos:
             if p['fecha'] <= fecha_aniv:
                 cap_en_fecha -= p['cap']
         
         if cap_en_fecha < 0: cap_en_fecha = 0.0
-        
         interes_total_generado += (cap_en_fecha * 0.10)
         
     interes_pagado = run_query("SELECT SUM(pago_interes) FROM pagos WHERE prestamo_id = %s", (int(prestamo_id),), returning=True) or 0.0
-    
     interes_pendiente = max(0.0, float(interes_total_generado) - float(interes_pagado))
     return float(interes_pendiente), int(meses_a_cobrar)
 
@@ -115,8 +112,9 @@ def obtener_limites_prestamo():
     
     base_calculo = float(t_dep) + float(t_ing_ex) + float(t_int_gan)
     limite_70 = base_calculo * 0.70
+    reserva_30 = base_calculo * 0.30
     disponible = limite_70 - cap_vigente
-    return max(0.0, float(disponible)), float(limite_70), float(cap_vigente), float(base_calculo)
+    return max(0.0, float(disponible)), float(limite_70), float(cap_vigente), float(base_calculo), float(reserva_30)
 
 # ==========================================
 # 3. CONEXIÓN POSTGRESQL (NEON CLOUD)
@@ -202,6 +200,17 @@ def cargar_fuente(tamanio, negrita=False):
     try: return ImageFont.truetype(nombre_archivo, tamanio)
     except: return ImageFont.load_default()
 
+def mostrar_tarjeta_estetica(icono, titulo, valor, color_fondo, color_borde, color_texto, tamano_fuente="24px"):
+    """Función para crear tarjetas visuales (Cards) con HTML/CSS"""
+    st.markdown(f"""
+    <div style="background-color: {color_fondo}; padding: 18px; border-radius: 12px; 
+                box-shadow: 0 4px 6px rgba(0,0,0,0.06); border-left: 6px solid {color_borde}; 
+                margin-bottom: 15px; text-align: center; height: 100%;">
+        <p style="margin: 0; font-size: 13px; color: #555; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">{icono} {titulo}</p>
+        <h3 style="margin: 8px 0 0 0; color: {color_texto}; font-size: {tamano_fuente}; font-weight: 800;">${valor:,.2f}</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
 def generar_voucher_imagen(titulo, num_ref, socio_nombre, socio_cedula, detalles):
     alto = 540 + (len(detalles) * 75)
     logo_img = None
@@ -225,9 +234,7 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, socio_cedula, detalles
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
-        except:
-            bbox = font.getmask(text).getbbox()
-            return bbox[2] if bbox else 10
+        except: return 10
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
@@ -277,92 +284,81 @@ def generar_voucher_imagen(titulo, num_ref, socio_nombre, socio_cedula, detalles
     y_pos += 30
     d.line([(50, y_pos), (750, y_pos)], fill='#CCCCCC', width=3)
     draw_centered(y_pos + 45, "Gracias por su confianza", f_small, '#777777')
-    draw_centered(y_pos + 80, "Documento valido como comprobante", f_small, '#777777')
     
     buf = io.BytesIO()
     img.save(buf, format='PNG')
     return buf.getvalue()
 
 def generar_imagen_dashboard(detalles):
-    alto_filas = len(detalles) * 80
-    alto_total = 380 + alto_filas + 120
+    alto_filas = len(detalles) * 75
+    alto_total = 380 + alto_filas + 100
     
     logo_img = None
     logo_height = 0
     if os.path.exists("logo_banco.png"):
         try:
             logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((180, 180))
-            logo_height = logo_img.height + 30
+            logo_img.thumbnail((160, 160))
+            logo_height = logo_img.height + 20
             alto_total += logo_height
         except: pass
 
     img = Image.new('RGB', (900, alto_total), color='#F8F5EE')
     d = ImageDraw.Draw(img)
 
-    f_title = cargar_fuente(46, True)
-    f_sub = cargar_fuente(28, False)
-    f_bold = cargar_fuente(34, True)
-    f_text = cargar_fuente(32, False)
-    f_small = cargar_fuente(22, False)
+    f_title = cargar_fuente(42, True)
+    f_sub = cargar_fuente(24, False)
+    f_bold = cargar_fuente(30, True)
+    f_text = cargar_fuente(28, False)
+    f_small = cargar_fuente(20, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
-        except:
-            bbox = font.getmask(text).getbbox()
-            return bbox[2] if bbox else 10
+        except: return 10
 
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
         x = (900 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
-    y_pos = 50
+    y_pos = 40
     if logo_img:
         logo_x = int((900 - logo_img.width) / 2)
         img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
         y_pos += logo_height
 
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
-    y_pos += 65
-    draw_centered(y_pos, "RESUMEN FINANCIERO", f_bold, '#122B4D')
     y_pos += 55
+    draw_centered(y_pos, "ESTADO DE RESULTADOS Y CAJA", f_bold, '#122B4D')
+    y_pos += 45
     draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
     
-    y_pos += 75
+    y_pos += 60
     
-    d.rectangle([50, y_pos, 850, y_pos + 65], fill='#122B4D')
-    d.text((70, y_pos + 18), "CONCEPTO", font=f_bold, fill='#FFFFFF')
-    w_monto = get_text_width("MONTO", f_bold)
-    d.text((830 - w_monto, y_pos + 18), "MONTO", font=f_bold, fill='#FFFFFF')
-    
-    y_pos += 65
-
     for index, (key, val) in enumerate(detalles.items()):
-        if "SALDO NETO EN CAJA" in key or "Disponible para prestamos" in key:
-            bg_color = "#1F4E78"
-            text_color = "#FFFFFF"
-            font_k = f_bold
-            font_v = f_bold
-        elif "CAJA" in key:
-            bg_color = "#E2E8F0"
-            text_color = "#091D3E"
-            font_k = f_bold
-            font_v = f_bold
+        is_header = (val == "")
+        is_main = "TOTAL" in key or "SALDO NETO" in key
+        
+        if "SALDO NETO EN CAJA" in key:
+            bg_color = "#1565C0"; text_color = "#FFFFFF"; font_k = f_bold; font_v = f_bold
+        elif is_header:
+            bg_color = "#122B4D"; text_color = "#FFFFFF"; font_k = f_bold; font_v = f_bold
+        elif is_main:
+            bg_color = "#E2E8F0"; text_color = "#091D3E"; font_k = f_bold; font_v = f_bold
         else:
             bg_color = "#FFFFFF" if index % 2 == 0 else "#F0F4F8"
-            text_color = "#333333"
-            font_k = f_text
-            font_v = f_text
+            text_color = "#333333"; font_k = f_text; font_v = f_text
 
-        d.rectangle([50, y_pos, 850, y_pos + 80], fill=bg_color, outline="#CCCCCC", width=1)
-        d.text((70, y_pos + 22), key, font=font_k, fill=text_color)
-        w_val = get_text_width(str(val), font_v)
-        d.text((830 - w_val, y_pos + 22), str(val), font=font_v, fill=text_color)
+        d.rectangle([50, y_pos, 850, y_pos + 70], fill=bg_color, outline="#CCCCCC", width=1)
+        d.text((70, y_pos + 18), key, font=font_k, fill=text_color)
         
-        y_pos += 80
+        if not is_header:
+            w_val = get_text_width(str(val), font_v)
+            d.text((830 - w_val, y_pos + 18), str(val), font=font_v, fill=text_color)
+        
+        y_pos += 70
 
-    y_pos += 50
+    y_pos += 40
     draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
     
     buf = io.BytesIO()
@@ -373,42 +369,21 @@ def generar_imagen_reporte_vigentes(reporte_data, total_cap, total_int):
     alto_filas = len(reporte_data) * 80
     alto_total = 400 + alto_filas + 280
     
-    logo_img = None
-    logo_height = 0
-    if os.path.exists("logo_banco.png"):
-        try:
-            logo_img = Image.open("logo_banco.png").convert("RGBA")
-            logo_img.thumbnail((180, 180))
-            logo_height = logo_img.height + 30
-            alto_total += logo_height
-        except: pass
-
     img = Image.new('RGB', (900, alto_total), color='#F8F5EE')
     d = ImageDraw.Draw(img)
 
-    f_title = cargar_fuente(46, True)
-    f_sub = cargar_fuente(28, False)
-    f_bold = cargar_fuente(34, True)
-    f_text = cargar_fuente(32, False)
-    f_small = cargar_fuente(22, False)
+    f_title = cargar_fuente(46, True); f_sub = cargar_fuente(28, False)
+    f_bold = cargar_fuente(34, True); f_text = cargar_fuente(32, False); f_small = cargar_fuente(22, False)
 
     def get_text_width(text, font):
         try: return d.textlength(text, font=font)
-        except:
-            bbox = font.getmask(text).getbbox()
-            return bbox[2] if bbox else 10
-
+        except: return 10
     def draw_centered(y, text, font, fill):
         w = get_text_width(text, font)
         x = (900 - w) / 2
         d.text((x, y), text, font=font, fill=fill)
 
     y_pos = 50
-    if logo_img:
-        logo_x = int((900 - logo_img.width) / 2)
-        img.paste(logo_img, (logo_x, y_pos), mask=logo_img)
-        y_pos += logo_height
-
     draw_centered(y_pos, "BANCO FAMILIA GUZMAN", f_title, '#091D3E')
     y_pos += 65
     draw_centered(y_pos, "REPORTE DE CRÉDITOS VIGENTES", f_bold, '#122B4D')
@@ -416,25 +391,20 @@ def generar_imagen_reporte_vigentes(reporte_data, total_cap, total_int):
     draw_centered(y_pos, f"FECHA DE CORTE: {format_datetime(get_guayaquil_time())}", f_sub, '#555555')
     
     y_pos += 75
-    
     d.rectangle([50, y_pos, 850, y_pos + 65], fill='#122B4D')
     d.text((70, y_pos + 18), "SOCIO Y MESES", font=f_bold, fill='#FFFFFF')
     w_monto = get_text_width("DEUDA TOTAL", f_bold)
     d.text((830 - w_monto, y_pos + 18), "DEUDA TOTAL", font=f_bold, fill='#FFFFFF')
-    
     y_pos += 65
 
     for index, row in enumerate(reporte_data):
         bg_color = "#FFFFFF" if index % 2 == 0 else "#F0F4F8"
         d.rectangle([50, y_pos, 850, y_pos + 80], fill=bg_color, outline="#CCCCCC", width=1)
-        
         socio_str = f"{row['SOCIO'][:25]} ({row['MESES']}m)"
         val_str = f"${row['TOTAL ESPERADO']:,.2f}"
-        
         d.text((70, y_pos + 22), socio_str, font=f_text, fill="#333333")
         w_val = get_text_width(val_str, f_text)
         d.text((830 - w_val, y_pos + 22), val_str, font=f_text, fill="#333333")
-        
         y_pos += 80
 
     y_pos += 20
@@ -454,10 +424,6 @@ def generar_imagen_reporte_vigentes(reporte_data, total_cap, total_int):
     d.text((70, y_pos + 18), "GRAN TOTAL ESPERADO", font=f_bold, fill='#FFFFFF')
     w_val = get_text_width(f"${(total_cap + total_int):,.2f}", f_bold)
     d.text((830 - w_val, y_pos + 18), f"${(total_cap + total_int):,.2f}", font=f_bold, fill='#FFFFFF')
-    y_pos += 65
-
-    y_pos += 50
-    draw_centered(y_pos, "Generado automáticamente por el Sistema Central", f_small, '#777777')
     
     buf = io.BytesIO()
     img.save(buf, format='PNG')
@@ -646,7 +612,6 @@ st.markdown("""
         background-color: #FFFFFF !important; border: 1px solid #E2E8F0 !important; 
         padding: 15px 20px !important; border-radius: 12px !important; box-shadow: 0px 4px 10px rgba(0,0,0,0.03) !important;
     }
-    div[data-testid="metric-container"] { border-left: 5px solid #1F4E78 !important; }
 
     div.stButton > button:first-child { 
         background-color: #122B4D !important; color: #FFFFFF !important; border: none !important; 
@@ -701,52 +666,64 @@ if st.session_state['rol'] == 'Administrador':
     if menu == "🏢 INICIO Y DASHBOARD":
         st.header("RESUMEN FINANCIERO DEL BANCO")
         
+        # 1. CALCULAMOS TODOS LOS VALORES
         t_dep = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'DEPOSITO'", returning=True) or 0.0
         t_ret = run_query("SELECT SUM(monto) FROM transacciones WHERE tipo = 'RETIRO'", returning=True) or 0.0
         t_ing_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'INGRESO'", returning=True) or 0.0
         t_egr_ex = run_query("SELECT SUM(monto) FROM flujo_extra WHERE tipo = 'EGRESO'", returning=True) or 0.0
         t_int_gan = run_query("SELECT SUM(pago_interes) FROM pagos", returning=True) or 0.0
         
-        disponible, _, cap_vigente, _ = obtener_limites_prestamo()
+        disponible, limite_70, cap_vigente, base_calculo, reserva_30 = obtener_limites_prestamo()
         
-        # FÓRMULA DE CAJA EXACTA COMO LA PEDISTE
         total_ingresos = float(t_dep) + float(t_ing_ex) + float(t_int_gan)
         total_egresos = float(t_ret) + float(t_egr_ex)
         saldo_caja = total_ingresos - total_egresos - float(cap_vigente)
 
-        # 1. SECCIÓN INGRESOS
-        st.markdown("<h3 style='color:#1A5632 !important;'>🟢 1. INGRESOS DEL SISTEMA</h3>", unsafe_allow_html=True)
-        col1, col2, col3 = st.columns(3)
-        col1.metric("📥 TOTAL DEPÓSITOS", f"${t_dep:,.2f}")
-        col2.metric("➕ INGRESOS EXTRAS", f"${t_ing_ex:,.2f}")
-        col3.metric("📈 INTERESES GANADOS", f"${t_int_gan:,.2f}")
+        # ==========================================
+        # DISEÑO DEL NUEVO DASHBOARD ATRACTIVO
+        # ==========================================
         
-        st.divider()
+        # SECCIÓN 1: INGRESOS
+        st.markdown("<h3 style='color:#1B5E20; margin-top:0;'>🟢 1. RESUMEN DE INGRESOS</h3>", unsafe_allow_html=True)
+        mostrar_tarjeta_estetica("💰", "TOTAL INGRESOS DEL SISTEMA", total_ingresos, "#E8F5E9", "#2E7D32", "#1B5E20", "28px")
         
-        # 2. SECCIÓN EGRESOS
-        st.markdown("<h3 style='color:#B91C1C !important;'>🔴 2. SALIDAS Y EGRESOS</h3>", unsafe_allow_html=True)
-        col4, col5, col6 = st.columns(3)
-        col4.metric("📤 RETIROS DE SOCIOS", f"${t_ret:,.2f}")
-        col5.metric("➖ GASTOS EXTRAS", f"${t_egr_ex:,.2f}")
-        col6.empty() 
+        c1, c2, c3 = st.columns(3)
+        with c1: mostrar_tarjeta_estetica("📥", "TOTAL DEPÓSITOS", t_dep, "#F1F8E9", "#7CB342", "#33691E", "22px")
+        with c2: mostrar_tarjeta_estetica("➕", "INGRESOS EXTRAS", t_ing_ex, "#F1F8E9", "#7CB342", "#33691E", "22px")
+        with c3: mostrar_tarjeta_estetica("📈", "INTERESES GANADOS", t_int_gan, "#F1F8E9", "#7CB342", "#33691E", "22px")
         
-        st.divider()
+        st.write("<br>", unsafe_allow_html=True)
+        
+        # SECCIÓN 2: EGRESOS
+        st.markdown("<h3 style='color:#B71C1C;'>🔴 2. RESUMEN DE SALIDAS Y EGRESOS</h3>", unsafe_allow_html=True)
+        mostrar_tarjeta_estetica("💸", "TOTAL EGRESOS DEL SISTEMA", total_egresos, "#FFEBEE", "#C62828", "#B71C1C", "28px")
+        
+        c4, c5 = st.columns(2)
+        with c4: mostrar_tarjeta_estetica("📤", "RETIROS DE SOCIOS", t_ret, "#FFEBEE", "#E53935", "#B71C1C", "22px")
+        with c5: mostrar_tarjeta_estetica("➖", "GASTOS EXTRAS", t_egr_ex, "#FFEBEE", "#E53935", "#B71C1C", "22px")
+        
+        st.write("<br>", unsafe_allow_html=True)
 
-        # 3. SECCIÓN CAJA
-        st.markdown("<h3 style='color:#091D3E !important;'>💰 3. DISPONIBILIDAD Y CAJA (EFECTIVO)</h3>", unsafe_allow_html=True)
-        col7, col8, col9 = st.columns(3)
-        col7.metric("💵 CAPITAL PRESTADO", f"${cap_vigente:,.2f}")
-        col8.metric("✅ DISPONIBLE PARA PRESTAR", f"${disponible:,.2f}")
-        col9.metric("🏦 SALDO NETO EN CAJA", f"${saldo_caja:,.2f}")
+        # SECCIÓN 3: CAJA Y DISTRIBUCIÓN
+        st.markdown("<h3 style='color:#0D47A1;'>🏦 3. CAJA Y DISTRIBUCIÓN DE CARTERA</h3>", unsafe_allow_html=True)
+        mostrar_tarjeta_estetica("💎", "SALDO NETO EN CAJA (EFECTIVO FÍSICO)", saldo_caja, "#E3F2FD", "#1565C0", "#0D47A1", "34px")
+        
+        c6, c7, c8 = st.columns(3)
+        with c6: mostrar_tarjeta_estetica("🤝", "CAPITAL PRESTADO (EN LA CALLE)", cap_vigente, "#FFF8E1", "#FFB300", "#FF8F00", "22px")
+        with c7: mostrar_tarjeta_estetica("✅", "DISPONIBLE PARA PRESTAR (70%)", disponible, "#E8F5E9", "#2E7D32", "#1B5E20", "22px")
+        with c8: mostrar_tarjeta_estetica("🔒", "DINERO BLOQUEADO (RESERVA 30%)", reserva_30, "#FCE4EC", "#D81B60", "#880E4F", "22px")
         
         st.write("---")
         
+        # ==========================================
+        # GENERACIÓN DE PDF E IMAGEN (ACTUALIZADOS)
+        # ==========================================
         def crear_pdf_resumen():
             pdf = ResumenPDF()
             pdf.add_page()
             pdf.set_font("Arial", 'B', 14); pdf.set_text_color(80, 80, 80)
-            pdf.cell(0, 10, clean_text("Resumen Financiero Consolidado"), ln=True, align='C')
-            pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(10)
+            pdf.cell(0, 10, clean_text("Estado de Resultados y Caja"), ln=True, align='C')
+            pdf.set_font("Arial", '', 10); pdf.cell(0, 5, f"FECHA DE CORTE: {hoy_str}", ln=True, align='C'); pdf.ln(8)
             
             def add_row(label, value, fill_row, is_bold=False):
                 if fill_row: pdf.set_fill_color(244, 248, 251)
@@ -754,48 +731,58 @@ if st.session_state['rol'] == 'Administrador':
                 pdf.set_text_color(51, 51, 51)
                 if is_bold: pdf.set_font("Arial", 'B', 11)
                 else: pdf.set_font("Arial", '', 11)
-                pdf.cell(100, 10, label, border=1, fill=True)
-                pdf.cell(50, 10, value, border=1, fill=True, ln=True, align='R')
+                pdf.cell(110, 10, label, border=1, fill=True)
+                pdf.cell(45, 10, value, border=1, fill=True, ln=True, align='R')
 
             pdf.set_draw_color(226, 232, 240)
             
             # Seccion 1
-            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(31, 78, 120)
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(27, 94, 32)
             pdf.cell(0, 10, "1. INGRESOS", ln=True)
-            add_row("Total Depositos:", f"${t_dep:,.2f}", False)
-            add_row("Ingresos Extras:", f"${t_ing_ex:,.2f}", True)
-            add_row("Intereses Ganados:", f"${t_int_gan:,.2f}", False)
+            add_row("TOTAL INGRESOS:", f"${total_ingresos:,.2f}", True, True)
+            add_row("   - Total Depositos", f"${t_dep:,.2f}", False)
+            add_row("   - Ingresos Extras", f"${t_ing_ex:,.2f}", False)
+            add_row("   - Intereses Ganados", f"${t_int_gan:,.2f}", False)
             
-            pdf.ln(2)
+            pdf.ln(3)
             # Seccion 2
-            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(185, 28, 28)
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(183, 28, 28)
             pdf.cell(0, 10, "2. SALIDAS Y EGRESOS", ln=True)
-            add_row("Retiros de Socios:", f"${t_ret:,.2f}", False)
-            add_row("Gastos Extras:", f"${t_egr_ex:,.2f}", True)
+            add_row("TOTAL EGRESOS:", f"${total_egresos:,.2f}", True, True)
+            add_row("   - Retiros de Socios", f"${t_ret:,.2f}", False)
+            add_row("   - Gastos Extras", f"${t_egr_ex:,.2f}", False)
             
-            pdf.ln(2)
+            pdf.ln(3)
             # Seccion 3
-            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(9, 29, 62)
-            pdf.cell(0, 10, "3. BALANCE Y CAJA", ln=True)
+            pdf.set_font("Arial", 'B', 12); pdf.set_text_color(13, 71, 161)
+            pdf.cell(0, 10, "3. DISTRIBUCION DE CARTERA", ln=True)
             add_row("Capital Prestado (En la calle):", f"${cap_vigente:,.2f}", False)
-            add_row("Disponible para Prestar (Lmite 70%):", f"${disponible:,.2f}", True)
+            add_row("Disponible para Prestar (Limite 70%):", f"${disponible:,.2f}", False)
+            add_row("Dinero Bloqueado (Reserva 30%):", f"${reserva_30:,.2f}", False)
             
-            pdf.ln(5)
-            pdf.set_fill_color(31, 78, 120); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
-            pdf.cell(100, 12, "SALDO NETO EN CAJA:", border=0, fill=True)
-            pdf.cell(50, 12, f"${saldo_caja:,.2f}", border=0, fill=True, ln=True, align='R')
+            pdf.ln(6)
+            pdf.set_fill_color(13, 71, 161); pdf.set_text_color(255, 255, 255); pdf.set_font("Arial", 'B', 14)
+            pdf.cell(110, 12, "SALDO NETO EN CAJA (EFECTIVO):", border=0, fill=True)
+            pdf.cell(45, 12, f"${saldo_caja:,.2f}", border=0, fill=True, ln=True, align='R')
             
             try: return pdf.output(dest='S').encode('latin1')
             except: return bytes(pdf.output())
 
         def crear_imagen_resumen():
             detalles_resumen = {
-                "[+] TOTAL DEPOSITOS": f"${t_dep:,.2f}",
-                "[+] INGRESOS EXTRAS": f"${t_ing_ex:,.2f}",
-                "[+] INTERESES GANADOS": f"${t_int_gan:,.2f}",
-                "[-] RETIROS DE SOCIOS": f"${t_ret:,.2f}",
-                "[-] GASTOS EXTRAS": f"${t_egr_ex:,.2f}",
-                "[*] CAPITAL PRESTADO": f"${cap_vigente:,.2f}",
+                "1. SECCIÓN DE INGRESOS": "",
+                "TOTAL INGRESOS": f"${total_ingresos:,.2f}",
+                "   ├ Depósitos": f"${t_dep:,.2f}",
+                "   ├ Extras": f"${t_ing_ex:,.2f}",
+                "   └ Intereses": f"${t_int_gan:,.2f}",
+                "2. SECCIÓN DE EGRESOS": "",
+                "TOTAL EGRESOS": f"${total_egresos:,.2f}",
+                "   ├ Retiros": f"${t_ret:,.2f}",
+                "   └ Gastos": f"${t_egr_ex:,.2f}",
+                "3. CAJA Y CARTERA": "",
+                "   ├ Capital Prestado": f"${cap_vigente:,.2f}",
+                "   ├ Disponible (70%)": f"${disponible:,.2f}",
+                "   └ Reserva Fija (30%)": f"${reserva_30:,.2f}",
                 "SALDO NETO EN CAJA": f"${saldo_caja:,.2f}"
             }
             return generar_imagen_dashboard(detalles_resumen)
@@ -938,7 +925,7 @@ if st.session_state['rol'] == 'Administrador':
         with tab_solicitudes:
             solicitudes = get_dataframe('SELECT p.id, s.nombres, s.apellidos, p.capital_original as "CAPITAL_ORIGINAL", p.tipo_credito as "TIPO_CREDITO" FROM prestamos p JOIN socios s ON p.socio_id = s.id WHERE p.estado = \'SOLICITADO\'')
             if not solicitudes.empty:
-                disponible_prestamos, _, _, _ = obtener_limites_prestamo()
+                disponible_prestamos, _, _, _, _ = obtener_limites_prestamo()
                 st.info(f"💰 **Fondos disponibles para nuevos créditos (Límite 70%):** ${disponible_prestamos:,.2f}")
                 
                 for _, row in solicitudes.iterrows():
@@ -965,7 +952,7 @@ if st.session_state['rol'] == 'Administrador':
         with tab_otorgar:
             socios = get_dataframe("SELECT id, nombres, apellidos FROM socios")
             if not socios.empty:
-                disponible_prestamos, _, _, _ = obtener_limites_prestamo()
+                disponible_prestamos, _, _, _, _ = obtener_limites_prestamo()
                 st.info(f"💰 **Fondos disponibles para nuevos créditos (Límite 70%):** ${disponible_prestamos:,.2f}")
                 
                 with st.form("form_credito_directo"):
@@ -1311,7 +1298,7 @@ elif st.session_state['rol'] == 'SOCIO':
             else: st.info("Su historial de créditos está vacío.")
                 
         with tab_solicitar:
-            disponible, _, _, _ = obtener_limites_prestamo()
+            disponible, _, _, _, _ = obtener_limites_prestamo()
             st.info(f"💰 Valor disponible actual para créditos en el banco: **${disponible:,.2f}**")
             
             with st.form("form_solicitar"):
